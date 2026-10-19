@@ -17,14 +17,32 @@ export default function NewOrderPage() {
   const [orderItems, setOrderItems] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
+    useEffect(() => {
     const fetchData = async () => {
-      const distSnap = await getDocs(collection(db, "distributors"));
+      if (!auth.currentUser) return;
+      const isAdmin = auth.currentUser.email === "anand@perforacare.com";
+
+      // 1. Fetch Distributors (Filtered by user unless Admin)
+      let distQuery;
+      if (isAdmin) {
+        distQuery = query(collection(db, "distributors"));
+      } else {
+        distQuery = query(collection(db, "distributors"), where("mapped_SO_email", "==", auth.currentUser.email));
+      }
+      const distSnap = await getDocs(distQuery);
       setDistributors(distSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      const storeSnap = await getDocs(collection(db, "stores"));
+      // 2. Fetch Stores (Filtered by user unless Admin)
+      let storeQuery;
+      if (isAdmin) {
+        storeQuery = query(collection(db, "stores"));
+      } else {
+        storeQuery = query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
+      }
+      const storeSnap = await getDocs(storeQuery);
       setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
+      // 3. Fetch SKUs (Everyone sees all SKUs)
       const skuSnap = await getDocs(collection(db, "sku_master"));
       setSkus(skuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     };
