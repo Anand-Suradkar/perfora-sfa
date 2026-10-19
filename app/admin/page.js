@@ -5,13 +5,15 @@ import { db, auth } from "../lib/firebase";
 import { collection, getDocs, addDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+import Papa from "papaparse";
 
 export default function AdminPage() {
   const router = useRouter();
   const [skus, setSkus] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   
-  // Form State
+  // Manual Form State
   const [sku, setSku] = useState("");
   const [name, setName] = useState("");
   const [mrp, setMrp] = useState("");
@@ -44,12 +46,47 @@ export default function AdminPage() {
         is_focus: isFocus
       });
       alert("SKU Added!");
-      // Reset form
       setSku(""); setName(""); setMrp(""); setCategory(""); setIsFocus(false);
-      fetchSkus(); // Refresh list
+      fetchSkus();
     } catch (error) {
       alert("Error adding SKU");
     }
+  };
+
+  // --- BULK UPLOAD LOGIC ---
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploading(true);
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const uploadPromises = results.data.map(async (row) => {
+            // Make sure the CSV headers match these names exactly
+            if (!row.SKU || !row.Name || !row.MRP) return; 
+
+            await addDoc(collection(db, "sku_master"), {
+              sku: String(row.SKU).toUpperCase().trim(),
+              name: String(row.Name).trim(),
+              mrp: Number(row.MRP),
+              category: row.Category ? String(row.Category).trim() : "General",
+              is_focus: String(row.is_focus).toLowerCase() === "true" || String(row.is_focus) === "1"
+            });
+          });
+
+          await Promise.all(uploadPromises);
+          alert(`Successfully uploaded ${results.data.length} SKUs!`);
+          fetchSkus(); // Refresh list
+        } catch (error) {
+          console.error(error);
+          alert("Error uploading file. Check your column names.");
+        }
+        setUploading(false);
+      }
+    });
   };
 
   return (
@@ -60,9 +97,24 @@ export default function AdminPage() {
 
       <div className="p-4 space-y-6 max-w-md mx-auto">
         
-        {/* Add SKU Form */}
+        {/* Bulk Upload Section */}
+        <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200">
+          <h2 className="text-sm font-bold text-blue-900 mb-1">📁 Bulk Upload SKUs</h2>
+          <p className="text-xs text-blue-700 mb-3">Upload a CSV file with these exact columns: <br/><b>SKU, Name, MRP, Category, is_focus (true/false)</b></p>
+          
+          <input 
+            type="file" 
+            accept=".csv" 
+            onChange={handleFileUpload} 
+            disabled={uploading}
+            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+          />
+          {uploading && <p className="text-xs text-blue-600 font-bold mt-2 animate-pulse">Uploading... Please wait.</p>}
+        </div>
+
+        {/* Manual Form */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-          <h2 className="text-sm font-bold text-gray-800 mb-3 border-b pb-2">Add New SKU</h2>
+          <h2 className="text-sm font-bold text-gray-800 mb-3 border-b pb-2">Add Single SKU</h2>
           <form onSubmit={handleAddSku} className="space-y-3">
             <input required type="text" placeholder="SKU Code (e.g. PC-011)" value={sku} onChange={e => setSku(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50 text-sm" />
             <input required type="text" placeholder="Product Name" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border rounded-lg bg-gray-50 text-sm" />
