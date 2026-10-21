@@ -103,7 +103,7 @@ export default function AdminPage() {
             owner: String(row.Owner || "").trim(),
             distributor_id: String(row.DistributorID).trim(),
             SO_email: String(row.SO_Email).trim().toLowerCase(),
-            type: "REPEAT"
+            type: "REPEAT",
             createdAt: new Date().toISOString()
           });
         }
