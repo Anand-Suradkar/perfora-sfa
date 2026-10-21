@@ -12,13 +12,16 @@ export default function OrdersListPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("All");
 
-  const fetchOrders = async () => {
-    if (!auth.currentUser) return;
+  const fetchOrders = async (email) => {
     try {
-      const q = query(collection(db, "orders"), where("SO_email", "==", auth.currentUser.email));
+      const isAdmin = email === "anand@perforacare.com";
+      const q = isAdmin 
+        ? query(collection(db, "orders"))
+        : query(collection(db, "orders"), where("SO_email", "==", email));
+        
       const snap = await getDocs(q);
       const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetched.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+      fetched.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
       setOrders(fetched);
     } catch (error) {
       console.error(error);
@@ -27,13 +30,17 @@ export default function OrdersListPage() {
   };
 
   useEffect(() => {
-    fetchOrders();
+    // Wait for auth to be ready before fetching
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) fetchOrders(user.email);
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleUpdateStatus = async (id, newStatus) => {
     try {
       await updateDoc(doc(db, "orders", id), { status: newStatus });
-      fetchOrders(); // Refresh list
+      setOrders(orders.map(o => o.id === id ? { ...o, status: newStatus } : o));
     } catch (error) {
       alert("Error updating status");
     }
@@ -43,27 +50,23 @@ export default function OrdersListPage() {
     if (!confirm("Are you sure you want to delete this order?")) return;
     try {
       await deleteDoc(doc(db, "orders", id));
-      fetchOrders();
+      setOrders(orders.filter(o => o.id !== id));
     } catch (error) {
       alert("Error deleting order");
     }
   };
 
   const statuses = ["All", "CREATED", "SHARED", "ACCEPTED", "INVOICED"];
-  
   const filteredOrders = orders.filter(o => filter === "All" || o.status === filter);
 
   return (
     <div className="min-h-screen bg-[#f8f5ff] pb-20">
-      {/* Blue Header */}
       <div className="bg-gradient-to-r from-blue-800 to-blue-600 p-4 rounded-b-3xl shadow-lg text-white">
         <h1 className="text-2xl font-black">Orders</h1>
         <p className="text-sm opacity-90 mt-1">{orders.length} total orders</p>
       </div>
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
-        
-        {/* Status Filter Chips */}
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {statuses.map(s => {
             const count = s === "All" ? orders.length : orders.filter(o => o.status === s).length;
@@ -80,7 +83,6 @@ export default function OrdersListPage() {
           })}
         </div>
 
-        {/* Orders List */}
         {loading ? <p className="text-center font-bold text-gray-500 mt-10">Loading...</p> : 
          filteredOrders.length === 0 ? <p className="text-center font-bold text-gray-500 mt-10">No orders found.</p> :
          filteredOrders.map((order) => (
@@ -88,7 +90,7 @@ export default function OrdersListPage() {
             <div className="flex justify-between items-start mb-2">
               <div>
                 <h3 className="font-black text-gray-900 text-lg leading-tight">{order.store_id}</h3>
-                <p className="text-[10px] text-blue-600 font-bold mt-0.5">{order.distributor_id} • {new Date(order.createdAt?.toMillis()).toLocaleDateString()}</p>
+                <p className="text-[10px] text-blue-600 font-bold mt-0.5">{order.distributor_id} • {order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Just now'}</p>
                 <p className="text-xs text-gray-500 mt-1">{order.items.length} SKUs • {order.items.reduce((a, b) => a + b.qty, 0)} units</p>
               </div>
               <div className="text-right">
@@ -104,7 +106,6 @@ export default function OrdersListPage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-50">
               <button className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 rounded-lg border border-blue-100">View</button>
               <button className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>

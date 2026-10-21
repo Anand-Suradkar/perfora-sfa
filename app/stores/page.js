@@ -14,11 +14,16 @@ export default function StoresPage() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!auth.currentUser) return;
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!user) return;
+      
       try {
+        const isAdmin = user.email === "anand@perforacare.com";
+        
         // Fetch Stores
-        const storeQ = query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
+        const storeQ = isAdmin 
+          ? query(collection(db, "stores")) 
+          : query(collection(db, "stores"), where("SO_email", "==", user.email));
         const storeSnap = await getDocs(storeQ);
         setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
@@ -26,7 +31,9 @@ export default function StoresPage() {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         
-        const visitQ = query(collection(db, "visits"), where("SO_email", "==", auth.currentUser.email));
+        const visitQ = isAdmin
+          ? query(collection(db, "visits"))
+          : query(collection(db, "visits"), where("SO_email", "==", user.email));
         const visitSnap = await getDocs(visitQ);
         
         const visitMap = {};
@@ -42,8 +49,8 @@ export default function StoresPage() {
         console.error(error);
       }
       setLoading(false);
-    };
-    fetchData();
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleCheckIn = async (storeId) => {
@@ -64,28 +71,24 @@ export default function StoresPage() {
     }, (err) => alert("GPS error: " + err.message), { enableHighAccuracy: true });
   };
 
-  // Calculations for the top 4 cards
   const totalStores = stores.length;
   const visitedStores = Object.keys(visits).length;
   const pendingStores = totalStores - visitedStores;
   const productiveStores = Object.values(visits).filter(v => v.status === "COMPLETED").length;
 
   const filteredStores = stores.filter(s => 
-    s.name.toLowerCase().includes(search.toLowerCase()) || 
+    s.name?.toLowerCase().includes(search.toLowerCase()) || 
     s.id.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div className="min-h-screen bg-[#f8f5ff] pb-20">
-      {/* Teal Header */}
       <div className="bg-gradient-to-r from-teal-800 to-teal-600 p-4 rounded-b-3xl shadow-lg text-white">
         <h1 className="text-2xl font-black">Store visit beat</h1>
         <p className="text-sm opacity-90 mt-1">{new Date().toDateString()}</p>
       </div>
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
-        
-        {/* Search Bar */}
         <div className="bg-white p-2 rounded-2xl shadow-md border border-gray-100 flex items-center gap-2">
           <span className="text-gray-400 pl-2">🔍</span>
           <input 
@@ -97,7 +100,6 @@ export default function StoresPage() {
           />
         </div>
 
-        {/* 4 Status Cards */}
         <div className="grid grid-cols-4 gap-2">
           <div className="bg-green-50 rounded-xl p-2 text-center border border-green-100">
             <p className="text-[10px] font-bold text-green-800">✓ Productive</p>
@@ -119,10 +121,9 @@ export default function StoresPage() {
 
         <h3 className="font-bold text-gray-800 mt-4">Stores to visit today</h3>
 
-        {/* Stores List */}
         {loading ? <p className="text-center font-bold text-gray-500 mt-10">Loading...</p> : 
          filteredStores.length === 0 ? <p className="text-center font-bold text-gray-500 mt-10">No stores found.</p> :
-         filteredStores.map(store => {
+         filteredStores.slice(0, 50).map(store => {
           const visit = visits[store.id];
           const isCompleted = visit?.status === "COMPLETED";
           const isInProgress = visit?.status === "IN_PROGRESS";
@@ -132,9 +133,8 @@ export default function StoresPage() {
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="font-black text-gray-900 text-lg leading-tight">{store.name}</h3>
-                  <p className="text-xs text-gray-500 mt-1">{store.locality}, {store.city}</p>
+                  <p className="text-xs text-gray-500 mt-1">{store.locality} {store.city}</p>
                   <p className="text-xs text-gray-400 mt-1">Last order: none yet • {store.distributor_id}</p>
-                  <p className="text-[10px] font-bold text-orange-500 mt-2">⚠️ No order in 7+ days • follow up</p>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
                   isCompleted ? 'bg-green-100 text-green-700' : 
@@ -169,10 +169,3 @@ export default function StoresPage() {
     </div>
   );
 }
-        // Fetch Stores
-        const isAdmin = auth.currentUser.email === "anand@perforacare.com";
-        const storeQ = isAdmin 
-          ? query(collection(db, "stores")) 
-          : query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
-        const storeSnap = await getDocs(storeQ);
-        setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
