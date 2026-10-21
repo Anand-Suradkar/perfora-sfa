@@ -26,7 +26,7 @@ export default function AdminPage() {
     fetchSkus();
   }, [router]);
 
-  // --- BULK UPLOAD: SKUs ---
+    // --- BULK UPLOAD: SKUs ---
   const handleSkuUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -37,16 +37,20 @@ export default function AdminPage() {
       complete: async (results) => {
         for (let row of results.data) {
           if (!row.SKU || !row.Name || !row.MRP) continue;
-          await addDoc(collection(db, "sku_master"), {
-            sku: String(row.SKU).toUpperCase().trim(),
+          
+          const skuId = String(row.SKU).toUpperCase().trim();
+
+          // Use setDoc instead of addDoc to prevent duplicates!
+          await setDoc(doc(db, "sku_master", skuId), {
+            sku: skuId,
             name: String(row.Name).trim(),
             mrp: Number(row.MRP),
-            gst: Number(row.GST) || 0, // NEW: Accepts GST from CSV
+            gst: Number(row.GST) || 0, 
             category: row.Category || "General",
             is_focus: String(row.is_focus).toLowerCase() === "true"
           });
         }
-        alert(`Uploaded ${results.data.length} SKUs!`);
+        alert(`Uploaded/Updated ${results.data.length} SKUs!`);
         fetchSkus();
         setUploading("");
       }
