@@ -41,6 +41,7 @@ export default function AdminPage() {
             sku: String(row.SKU).toUpperCase().trim(),
             name: String(row.Name).trim(),
             mrp: Number(row.MRP),
+            gst: Number(row.GST) || 0, // NEW: Accepts GST from CSV
             category: row.Category || "General",
             is_focus: String(row.is_focus).toLowerCase() === "true"
           });
@@ -63,11 +64,16 @@ export default function AdminPage() {
       complete: async (results) => {
         for (let row of results.data) {
           if (!row.DistributorID || !row.DistributorName) continue;
-          // Using setDoc with ID so we can update them later
+          
+          let emailArray = [];
+          if (row.SO_Emails) {
+            emailArray = String(row.SO_Emails).split(",").map(email => email.trim().toLowerCase());
+          }
+
           await setDoc(doc(db, "distributors", String(row.DistributorID).trim()), {
             id: String(row.DistributorID).trim(),
             name: String(row.DistributorName).trim(),
-            mapped_SO_email: String(row.SO_Email).trim().toLowerCase()
+            mapped_SO_emails: emailArray
           });
         }
         alert(`Uploaded ${results.data.length} Distributors!`);
@@ -113,7 +119,7 @@ export default function AdminPage() {
         {/* Distributor Upload */}
         <div className="bg-purple-50 p-4 rounded-2xl border border-purple-200">
           <h2 className="text-sm font-bold text-purple-900 mb-1">👥 Bulk Upload Distributors & SOs</h2>
-          <p className="text-xs text-purple-700 mb-3">CSV Columns: <br/><b>DistributorID, DistributorName, SO_Email</b></p>
+          <p className="text-xs text-purple-700 mb-3">CSV Columns: <br/><b>DistributorID, DistributorName, SO_Emails</b></p>
           <input type="file" accept=".csv" onChange={handleDistUpload} disabled={uploading !== ""} className="block w-full text-sm file:bg-purple-600 file:text-white file:rounded-full file:border-0 file:px-4 file:py-2" />
           {uploading === "dists" && <p className="text-xs text-purple-600 font-bold mt-2 animate-pulse">Uploading...</p>}
         </div>
@@ -129,7 +135,7 @@ export default function AdminPage() {
         {/* SKU Upload */}
         <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200">
           <h2 className="text-sm font-bold text-blue-900 mb-1">📦 Bulk Upload SKUs</h2>
-          <p className="text-xs text-blue-700 mb-3">CSV Columns: <br/><b>SKU, Name, MRP, Category, is_focus</b></p>
+          <p className="text-xs text-blue-700 mb-3">CSV Columns: <br/><b>SKU, Name, MRP, GST, Category, is_focus</b></p>
           <input type="file" accept=".csv" onChange={handleSkuUpload} disabled={uploading !== ""} className="block w-full text-sm file:bg-blue-600 file:text-white file:rounded-full file:border-0 file:px-4 file:py-2" />
           {uploading === "skus" && <p className="text-xs text-blue-600 font-bold mt-2 animate-pulse">Uploading...</p>}
         </div>
@@ -147,6 +153,7 @@ export default function AdminPage() {
                 </div>
                 <div className="text-right">
                   <p className="font-black text-gray-900">₹{s.mrp}</p>
+                  <p className="text-[10px] text-gray-500">GST: {s.gst || 0}%</p>
                 </div>
               </div>
             ))}

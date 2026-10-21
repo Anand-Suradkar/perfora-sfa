@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db, auth } from "../../lib/firebase"; // Correct path for the new folder
-import { collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "../../lib/firebase";
+import { collection, getDocs, addDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import BottomNav from "../../components/BottomNav"; // Correct path
+import BottomNav from "../../components/BottomNav";
 
 export default function NewOrderPage() {
   const router = useRouter();
@@ -17,32 +17,23 @@ export default function NewOrderPage() {
   const [orderItems, setOrderItems] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-    useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       if (!auth.currentUser) return;
       const isAdmin = auth.currentUser.email === "anand@perforacare.com";
 
-      // 1. Fetch Distributors (Filtered by user unless Admin)
-      let distQuery;
-      if (isAdmin) {
-        distQuery = query(collection(db, "distributors"));
-      } else {
-        distQuery = query(collection(db, "distributors"), where("mapped_SO_email", "==", auth.currentUser.email));
-      }
+      let distQuery = isAdmin 
+        ? query(collection(db, "distributors")) 
+        : query(collection(db, "distributors"), where("mapped_SO_emails", "array-contains", auth.currentUser.email));
       const distSnap = await getDocs(distQuery);
       setDistributors(distSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // 2. Fetch Stores (Filtered by user unless Admin)
-      let storeQuery;
-      if (isAdmin) {
-        storeQuery = query(collection(db, "stores"));
-      } else {
-        storeQuery = query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
-      }
+      let storeQuery = isAdmin 
+        ? query(collection(db, "stores")) 
+        : query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
       const storeSnap = await getDocs(storeQuery);
       setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      // 3. Fetch SKUs (Everyone sees all SKUs)
       const skuSnap = await getDocs(collection(db, "sku_master"));
       setSkus(skuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     };
@@ -62,19 +53,52 @@ export default function NewOrderPage() {
   };
 
   const removeItem = (index) => {
-    const newItems = orderItems.filter((_, i) => i !== index);
-    setOrderItems(newItems);
+    setOrderItems(orderItems.filter((_, i) => i !== index));
   };
 
-  const calculateLineTotal = (skuId, qty, extra) => {
+  // --- EXACT MATH LOGIC FROM APPS SCRIPT `calc_` & `billingDiscountPct_` ---
+  const calculateLineData = (skuId, qty, extraSchemePercent) => {
     const skuData = skus.find(s => s.sku === skuId);
-    if (!skuData) return 0;
-    const totalMrp = skuData.mrp * qty;
-    const totalDiscount = 0.25 + (extra / 100);
-    return (totalMrp * (1 - totalDiscount)).toFixed(2);
+    if (!skuData) return { net: 0, claim: 0, mrp: 0, baseExGst: 0 };
+
+    const mrp = Number(skuData.mrp);
+    const gst = Number(skuData.gst) || 0;
+    const fixedMarginPct = 25; // Your fixed margin
+    
+    // 1. Calculate Fixed SKU billing rate (ex GST)
+    const fixedRateExGst = (mrp * (100 - fixedMarginPct) / 100) / (1 + gst / 100);
+    
+    // 2. Convert market scheme to billing discount (e.g., 5% -> 6.66%)
+    const billingDiscountPct = extraSchemePercent > 0 
+      ? Math.floor((extraSchemePercent * 100 / (100 - fixedMarginPct)) * 100 + 1e-8) / 100
+      : 0;
+      
+    // 3. Invoice base ex GST
+    const invoiceBaseExGst = fixedRateExGst * qty;
+    
+    // 4. Discount amount (ex GST)
+    const discountExGst = invoiceBaseExGst * (billingDiscountPct / 100);
+    
+    // 5. Taxable value & Tax
+    const taxable = invoiceBaseExGst - discountExGst;
+    const tax = taxable * (gst / 100);
+    
+    // 6. Final Net Value (incl GST)
+    const net = taxable + tax;
+    
+    // 7. Claim value (Discount + GST on discount)
+    const claim = discountExGst * (1 + gst / 100);
+
+    return {
+      mrp: mrp * qty,
+      baseExGst: invoiceBaseExGst.toFixed(2),
+      net: net.toFixed(2),
+      claim: claim.toFixed(2)
+    };
   };
 
-  const grandTotal = orderItems.reduce((acc, item) => acc + Number(calculateLineTotal(item.sku, item.qty, item.extraScheme)), 0);
+  const grandTotal = orderItems.reduce((acc, item) => acc + Number(calculateLineData(item.sku, item.qty, item.extraScheme).net), 0);
+  const totalClaim = orderItems.reduce((acc, item) => acc + Number(calculateLineData(item.sku, item.qty, item.extraScheme).claim), 0);
 
   const submitOrder = async () => {
     if (!selectedDist || !selectedStore || orderItems.length === 0) {
@@ -84,17 +108,32 @@ export default function NewOrderPage() {
 
     setIsSubmitting(true);
     try {
+      const finalItems = orderItems.map(item => {
+        const data = calculateLineData(item.sku, item.qty, item.extraScheme);
+        const skuData = skus.find(s => s.sku === item.sku);
+        return {
+          sku: item.sku,
+          skuName: skuData.name,
+          qty: item.qty,
+          extraScheme: item.extraScheme,
+          mrp: skuData.mrp,
+          net: Number(data.net),
+          claim: Number(data.claim)
+        };
+      });
+
       await addDoc(collection(db, "orders"), {
         SO_email: auth.currentUser.email,
         distributor_id: selectedDist,
         store_id: selectedStore,
-        items: orderItems,
+        items: finalItems,
         grand_total: grandTotal,
+        total_claim: totalClaim,
         status: "SUBMITTED",
         createdAt: serverTimestamp()
       });
       
-      // THIS IS THE MAGIC LINE: Sends you back to the Orders List
+      alert("Order submitted successfully!");
       router.push("/orders"); 
       
     } catch (error) {
@@ -142,49 +181,54 @@ export default function NewOrderPage() {
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           <h3 className="text-sm font-bold text-gray-800 mb-3">Order Items</h3>
           
-          {orderItems.map((item, index) => (
-            <div key={index} className="mb-4 p-3 bg-purple-50 rounded-xl relative border border-purple-100">
-              <button onClick={() => removeItem(index)} className="absolute top-2 right-2 text-red-400 font-bold text-xs">✕</button>
-              
-              <label className="text-[10px] font-bold text-gray-500">SKU</label>
-              <select 
-                className="w-full p-2 mb-2 border border-gray-200 rounded-lg text-sm bg-white"
-                value={item.sku} 
-                onChange={(e) => updateItem(index, "sku", e.target.value)}
-              >
-                <option value="">Select SKU...</option>
-                {skus.map(s => <option key={s.sku} value={s.sku}>{s.name} (₹{s.mrp})</option>)}
-              </select>
+          {orderItems.map((item, index) => {
+            const calc = calculateLineData(item.sku, item.qty, item.extraScheme);
+            return (
+              <div key={index} className="mb-4 p-3 bg-purple-50 rounded-xl relative border border-purple-100">
+                <button onClick={() => removeItem(index)} className="absolute top-2 right-2 text-red-400 font-bold text-xs">✕</button>
+                
+                <label className="text-[10px] font-bold text-gray-500">SKU</label>
+                <select 
+                  className="w-full p-2 mb-2 border border-gray-200 rounded-lg text-sm bg-white"
+                  value={item.sku} 
+                  onChange={(e) => updateItem(index, "sku", e.target.value)}
+                >
+                  <option value="">Select SKU...</option>
+                  {skus.map(s => <option key={s.sku} value={s.sku}>{s.name} (₹{s.mrp})</option>)}
+                </select>
 
-              <div className="flex gap-2">
-                <div className="w-1/2">
-                  <label className="text-[10px] font-bold text-gray-500">Qty</label>
-                  <input 
-                    type="number" min="1" 
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white"
-                    value={item.qty} 
-                    onChange={(e) => updateItem(index, "qty", Number(e.target.value))} 
-                  />
+                <div className="flex gap-2">
+                  <div className="w-1/2">
+                    <label className="text-[10px] font-bold text-gray-500">Qty</label>
+                    <input 
+                      type="number" min="1" 
+                      className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                      value={item.qty} 
+                      onChange={(e) => updateItem(index, "qty", Number(e.target.value))} 
+                    />
+                  </div>
+                  <div className="w-1/2">
+                    <label className="text-[10px] font-bold text-gray-500">Extra Scheme</label>
+                    <select 
+                      className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white"
+                      value={item.extraScheme} 
+                      onChange={(e) => updateItem(index, "extraScheme", Number(e.target.value))}
+                    >
+                      <option value={0}>0%</option>
+                      <option value={5}>5%</option>
+                      <option value={10}>10%</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="w-1/2">
-                  <label className="text-[10px] font-bold text-gray-500">Extra Scheme</label>
-                  <select 
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white"
-                    value={item.extraScheme} 
-                    onChange={(e) => updateItem(index, "extraScheme", Number(e.target.value))}
-                  >
-                    <option value={0}>0%</option>
-                    <option value={5}>5%</option>
-                    <option value={10}>10%</option>
-                  </select>
+
+                <div className="mt-2 text-right border-t border-purple-200 pt-2">
+                  <div className="text-[10px] text-gray-500 font-bold">Base (ex GST): ₹{calc.baseExGst}</div>
+                  <div className="text-[10px] text-purple-600 font-bold">Claim (incl GST): ₹{calc.claim}</div>
+                  <div className="text-xs font-black text-purple-700 mt-1">Net Total: ₹{calc.net}</div>
                 </div>
               </div>
-
-              <div className="mt-2 text-right">
-                <span className="text-xs font-bold text-purple-700">Line Total: ₹{calculateLineTotal(item.sku, item.qty, item.extraScheme)}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           <button 
             onClick={addItem}
@@ -196,15 +240,16 @@ export default function NewOrderPage() {
 
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
           <div>
-            <p className="text-xs text-gray-500 font-bold">Grand Total</p>
+            <p className="text-xs text-gray-500 font-bold">Grand Total (Incl GST)</p>
             <p className="text-xl font-black text-gray-900">₹{grandTotal.toFixed(2)}</p>
+            <p className="text-xs text-purple-600 font-bold mt-1">Total Claim: ₹{totalClaim.toFixed(2)}</p>
           </div>
           <button 
             onClick={submitOrder}
             disabled={isSubmitting}
             className="bg-purple-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:bg-purple-700 disabled:opacity-50"
           >
-            {isSubmitting ? "Saving..." : "Submit Order"}
+            {isSubmitting ? "Saving..." : "Submit"}
           </button>
         </div>
 
