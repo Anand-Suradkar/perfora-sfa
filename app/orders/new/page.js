@@ -114,6 +114,7 @@ export default function NewOrderPage() {
         return {
           sku: item.sku,
           skuName: skuData.name,
+          category: skuData.category || "General",
           qty: item.qty,
           extraScheme: item.extraScheme,
           mrp: skuData.mrp,
@@ -129,7 +130,7 @@ export default function NewOrderPage() {
         items: finalItems,
         grand_total: grandTotal,
         total_claim: totalClaim,
-        status: "SUBMITTED",
+        status: "CREATED",
         createdAt: serverTimestamp()
       });
       

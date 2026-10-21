@@ -169,3 +169,10 @@ export default function StoresPage() {
     </div>
   );
 }
+        // Fetch Stores
+        const isAdmin = auth.currentUser.email === "anand@perforacare.com";
+        const storeQ = isAdmin 
+          ? query(collection(db, "stores")) 
+          : query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
+        const storeSnap = await getDocs(storeQ);
+        setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));

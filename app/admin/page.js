@@ -104,6 +104,7 @@ export default function AdminPage() {
             distributor_id: String(row.DistributorID).trim(),
             SO_email: String(row.SO_Email).trim().toLowerCase(),
             type: "REPEAT"
+            createdAt: new Date().toISOString()
           });
         }
         alert(`Uploaded ${results.data.length} Stores!`);
