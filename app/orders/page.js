@@ -139,7 +139,7 @@ export default function OrdersListPage() {
                 <h3 className="font-bold">Order Details</h3>
                 <p className="text-xs opacity-80">{selectedOrder.storeName || selectedOrder.store_id}</p>
               </div>
-              <button onClick={() => setSelectedOrder(null)} className="text-white font-bold text-xl">✕</button>
+              <button onClick={() => setSelectedOrder(null)} className="text-white font-bold text-xl">X</button>
             </div>
             <div className="p-4 max-h-[60vh] overflow-y-auto">
               {selectedOrder.items.map((item, idx) => (
