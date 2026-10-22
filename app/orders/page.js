@@ -67,7 +67,7 @@ export default function OrdersListPage() {
             <h1 className="text-2xl font-black">Orders</h1>
             <p className="text-sm opacity-90 mt-1">{orders.length} total orders</p>
           </div>
-          <button onClick={() => router.push('/orders/new')} className="bg-white text-blue-800 font-bold px-4 py-2 rounded-xl text-sm shadow-sm">
+          <button onClick={() => router.push( /cart?editId=${order.id})} className="bg-white text-blue-800 font-bold px-4 py-2 rounded-xl text-sm shadow-sm">
             + Create Order
           </button>
         </div>

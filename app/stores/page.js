@@ -154,7 +154,7 @@ export default function StoresPage() {
                       Start visit →
                     </button>
                   ) : isInProgress ? (
-                    <button onClick={() => router.push("/orders/new")} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
+                    <button onClick={() => router.push(/orders/new?storeId={store.id}&distId={store.distributor_id})} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
                       Take Order
                     </button>
                   ) : (

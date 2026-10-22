@@ -30,28 +30,34 @@ export default function DashboardPage() {
       try {
         const isAdmin = u.email === "anand@perforacare.com";
 
+        // 1. Fetch Distributors for filter
         const distSnap = await getDocs(collection(db, "distributors"));
         setDistributors(distSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
+        // 2. Fetch Orders
         const orderQ = isAdmin ? query(collection(db, "orders")) : query(collection(db, "orders"), where("SO_email", "==", u.email));
         const orderSnap = await getDocs(orderQ);
         const fetchedOrders = orderSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setOrders(fetchedOrders);
 
-        // Extract unique SO emails for the filter dropdown
-        const uniqueSOs = [...new Set(fetchedOrders.map(o => o.SO_email))].filter(Boolean);
-        setSoList(uniqueSOs);
-
-        const visitQ = isAdmin ? query(collection(db, "visits")) : query(collection(db, "visits"), where("SO_email", "==", u.email));
-        const visitSnap = await getDocs(visitQ);
-        setVisits(visitSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
+        // 3. Fetch Stores
         const storeQ = isAdmin ? query(collection(db, "stores")) : query(collection(db, "stores"), where("SO_email", "==", u.email));
         const storeSnap = await getDocs(storeQ);
         setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
+        // 4. Extract unique SOs from BOTH orders and stores
+        const uniqueSOs = new Set();
+        fetchedOrders.forEach(o => { if(o.SO_email) uniqueSOs.add(o.SO_email); });
+        storeSnap.docs.forEach(d => { if(d.data().SO_email) uniqueSOs.add(d.data().SO_email); });
+        setSoList([...uniqueSOs]);
+
+        // 5. Fetch Visits
+        const visitQ = isAdmin ? query(collection(db, "visits")) : query(collection(db, "visits"), where("SO_email", "==", u.email));
+        const visitSnap = await getDocs(visitQ);
+        setVisits(visitSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
       } catch (error) {
-        console.error(error);
+        console.error("Error fetching dashboard data:", error);
       }
       setLoading(false);
     });
@@ -66,7 +72,6 @@ export default function DashboardPage() {
   const username = user.email.split('@')[0];
 
   // --- CALCULATIONS ---
-  const today = new Date().toISOString().split('T')[0];
   const currentMonth = filterDate.slice(0, 7); // e.g. "2026-10"
 
   let ftdCalls = 0, mtdCalls = 0, ftdSec = 0, mtdSec = 0, productiveCalls = 0;
@@ -112,6 +117,10 @@ export default function DashboardPage() {
   const filteredVisits = visits.filter(v => {
     if (!v.checkInTime) return false;
     const d = new Date(v.checkInTime.toMillis()).toISOString().split('T')[0];
+    
+    // SO filter for visits
+    if (filterSO !== "ALL" && v.SO_email !== filterSO) return false;
+    
     return d.slice(0, 7) === currentMonth;
   });
 
@@ -125,12 +134,13 @@ export default function DashboardPage() {
   const lpc = mtdCalls > 0 ? (totalSkus / mtdCalls).toFixed(1) : 0;
   const topStores = Object.entries(storeTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
   
+  // Fix New Stores logic (checking if createdAt exists)
   const newStoresCount = stores.filter(s => {
     if (!s.createdAt) return false;
     if (filterDist !== "ALL" && s.distributor_id !== filterDist) return false;
     if (filterSO !== "ALL" && s.SO_email !== filterSO) return false;
-    const created = new Date(s.createdAt).toISOString().slice(0, 7);
-    return created === currentMonth;
+    const created = s.createdAt.toMillis ? new Date(s.createdAt.toMillis()) : new Date(s.createdAt);
+    return created.toISOString().slice(0, 7) === currentMonth;
   }).length;
 
   const targetMTD = 500000; 
