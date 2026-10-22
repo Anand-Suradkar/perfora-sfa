@@ -121,52 +121,52 @@ export default function StoresPage() {
 
         <h3 className="font-bold text-gray-800 mt-4">Stores to visit today</h3>
 
-        {loading ? <p className="text-center font-bold text-gray-500 mt-10">Loading...</p> : 
-         filteredStores.length === 0 ? <p className="text-center font-bold text-gray-500 mt-10">No stores found.</p> :
-                 filteredStores.slice(0, 50).map(store => {
-          const visit = visits[store.id];
-          const isCompleted = visit?.status === "COMPLETED";
-          const isInProgress = visit?.status === "IN_PROGRESS";
+        {loading ? (
+          <p className="text-center font-bold text-gray-500 mt-10">Loading...</p> 
+        ) : filteredStores.length === 0 ? (
+          <p className="text-center font-bold text-gray-500 mt-10">No stores found.</p>
+        ) : (
+          filteredStores.slice(0, 100).map(store => {
+            const visit = visits[store.id];
+            const isCompleted = visit?.status === "COMPLETED";
+            const isInProgress = visit?.status === "IN_PROGRESS";
 
-          return (
-            <div key={store.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-2">
-              <div className="flex justify-between items-start">
-                <div className="min-w-0 pr-2">
-                  <h3 className="font-bold text-gray-900 text-sm leading-tight truncate">{store.name}</h3>
-                  <p className="text-[10px] text-gray-500 mt-0.5 truncate">{store.city} • {store.distributor_id}</p>
+            return (
+              <div key={store.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-2">
+                <div className="flex justify-between items-start">
+                  <div className="min-w-0 pr-2">
+                    <h3 className="font-bold text-gray-900 text-sm leading-tight truncate">{store.name}</h3>
+                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">{store.city} • {store.distributor_id}</p>
+                  </div>
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                    isCompleted ? 'bg-green-100 text-green-700' : 
+                    isInProgress ? 'bg-blue-100 text-blue-700' : 
+                    'bg-orange-100 text-orange-700'
+                  }`}>
+                    {isCompleted ? 'DONE' : isInProgress ? 'IN PROGRESS' : 'PENDING'}
+                  </span>
                 </div>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                  isCompleted ? 'bg-green-100 text-green-700' : 
-                  isInProgress ? 'bg-blue-100 text-blue-700' : 
-                  'bg-orange-100 text-orange-700'
-                }`}>
-                  {isCompleted ? 'DONE' : isInProgress ? 'IN PROGRESS' : 'PENDING'}
-                </span>
-              </div>
 
-              <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
-                <span className="text-[9px] font-bold text-gray-400 truncate w-24">ID: {store.id}</span>
-                {!visit ? (
-                  <button onClick={() => handleCheckIn(store.id)} className="bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
-                    Start visit →
-                  </button>
-                ) : isInProgress ? (
-                  <button onClick={() => router.push("/orders/new")} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
-                    Take Order
-                  </button>
-                ) : (
-                  <button onClick={() => router.push("/orders/new")} className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-gray-200">
-                    View Summary
-                  </button>
-                )}
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-50">
+                  <span className="text-[9px] font-bold text-gray-400 truncate w-24">ID: {store.id}</span>
+                  {!visit ? (
+                    <button onClick={() => handleCheckIn(store.id)} className="bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
+                      Start visit →
+                    </button>
+                  ) : isInProgress ? (
+                    <button onClick={() => router.push("/orders/new")} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
+                      Take Order
+                    </button>
+                  ) : (
+                    <button onClick={() => router.push("/orders/new")} className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-gray-200">
+                      View Summary
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )
-        })}
-              </div>
-            </div>
-          )
-        })}
+            );
+          })
+        )}
       </div>
       <BottomNav />
     </div>
