@@ -59,7 +59,6 @@ function OrderTakingForm() {
   const filteredStores = stores.filter(s => s.distributor_id === selectedDist);
   const categories = ["All", ...new Set(skus.map(s => s.category || "General"))];
 
-  // FIXED SEARCH LOGIC
   const filteredSkus = skus.filter(s => {
     const matchesCat = activeCategory === "All" || (s.category || "General") === activeCategory;
     const searchLower = search.toLowerCase();
@@ -136,21 +135,28 @@ function OrderTakingForm() {
           </div>
 
           <div className="space-y-3">
-            {filteredSkus.map(sku => (
+            {filteredSkus.map(sku => {
+              // DYNAMIC EX-GST CALCULATION
+              const gstRate = Number(sku.gst) || 0;
+              const exGstRate = (Number(sku.mrp) * (100 - 25) / 100) / (1 + gstRate / 100);
+
+              return (
               <div key={sku.sku} className="flex items-center gap-3 border border-gray-100 p-2 rounded-xl">
-                {/* IMAGE FIX */}
-                <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0">
+                
+                {/* IMAGE LOGIC: Tries to load sku.img, if missing shows a box */}
+                <div className="w-14 h-14 bg-gray-50 rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0 border border-gray-100">
                   {sku.img ? (
-                    <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" />
-                  ) : (
-                    "📦"
-                  )}
+                    <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                  ) : null}
+                  <span className={sku.img ? "hidden" : "block"}>📦</span>
                 </div>
                 
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-bold text-purple-600">{sku.sku}</p>
                   <p className="text-xs font-black text-gray-800 leading-tight truncate">{sku.name}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">MRP ₹{sku.mrp} <span className="text-gray-400">Rate ex-GST ₹{((sku.mrp / 1.18) * 0.75).toFixed(2)}</span></p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    MRP ₹{sku.mrp} <span className="text-gray-400">Rate ex-GST ₹{exGstRate.toFixed(2)}</span>
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => updateQty(sku.sku, -1)} className="w-7 h-7 bg-gray-100 rounded-full font-bold">−</button>
@@ -158,7 +164,7 @@ function OrderTakingForm() {
                   <button onClick={() => updateQty(sku.sku, 1)} className="w-7 h-7 bg-blue-100 text-blue-700 rounded-full font-bold">+</button>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         </div>
       </div>
