@@ -67,7 +67,7 @@ export default function OrdersListPage() {
             <h1 className="text-2xl font-black">Orders</h1>
             <p className="text-sm opacity-90 mt-1">{orders.length} total orders</p>
           </div>
-          <button onClick={() => router.push( /cart?editId=${order.id})} className="bg-white text-blue-800 font-bold px-4 py-2 rounded-xl text-sm shadow-sm">
+          <button onClick={() => router.push('/orders/new')} className="bg-white text-blue-800 font-bold px-4 py-2 rounded-xl text-sm shadow-sm">
             + Create Order
           </button>
         </div>
@@ -97,8 +97,10 @@ export default function OrdersListPage() {
             <div className="flex justify-between items-start mb-2">
               <div>
                 <h3 className="font-black text-gray-900 text-lg leading-tight">{order.storeName || order.store_id}</h3>
-                <p className="text-[10px] text-blue-600 font-bold mt-0.5">{order.id.slice(-6).toUpperCase()} • {order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Just now'} • {order.distributor_id}</p>
-                <p className="text-xs text-gray-500 mt-1">{order.items.length} SKUs • {order.items.reduce((a, b) => a + b.qty, 0)} units</p>
+                <p className="text-[10px] text-blue-600 font-bold mt-0.5">
+                  {order.id.slice(-6).toUpperCase()} | {order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Just now'} | {order.distributor_id}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">{order.items.length} SKUs | {order.items.reduce((a, b) => a + b.qty, 0)} units</p>
               </div>
               <div className="text-right">
                 <p className="font-black text-gray-900 text-lg">₹{Number(order.grand_total).toFixed(0)}</p>
@@ -115,7 +117,7 @@ export default function OrdersListPage() {
 
             <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-50">
               <button onClick={() => setSelectedOrder(order)} className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 rounded-lg border border-blue-100">View</button>
-              <button className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>
+              <button onClick={() => router.push(`/cart?editId=${order.id}`)} className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>
               
               {(order.status === 'CREATED' || order.status === 'SHARED') && (
                 <a href={`https://wa.me/?text=Order ${order.id} Total: ${order.grand_total}`} target="_blank" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
@@ -135,7 +137,6 @@ export default function OrdersListPage() {
         ))}
       </div>
 
-      {/* View Order Modal */}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
@@ -151,7 +152,7 @@ export default function OrdersListPage() {
                 <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
                   <div>
                     <p className="text-sm font-bold text-gray-800">{item.skuName || item.sku}</p>
-                    <p className="text-xs text-gray-500">Qty: {item.qty} • Scheme: {item.extraScheme}%</p>
+                    <p className="text-xs text-gray-500">Qty: {item.qty} | Scheme: {item.extraScheme}%</p>
                   </div>
                   <p className="text-sm font-black text-gray-900">₹{Number(item.net).toFixed(2)}</p>
                 </div>

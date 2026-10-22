@@ -20,14 +20,12 @@ export default function StoresPage() {
       try {
         const isAdmin = user.email === "anand@perforacare.com";
         
-        // Fetch Stores
         const storeQ = isAdmin 
           ? query(collection(db, "stores")) 
           : query(collection(db, "stores"), where("SO_email", "==", user.email));
         const storeSnap = await getDocs(storeQ);
         setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-        // Fetch Today's Visits
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         
@@ -102,19 +100,19 @@ export default function StoresPage() {
 
         <div className="grid grid-cols-4 gap-2">
           <div className="bg-green-50 rounded-xl p-2 text-center border border-green-100">
-            <p className="text-[10px] font-bold text-green-800">✓ Productive</p>
+            <p className="text-[10px] font-bold text-green-800">Productive</p>
             <p className="text-lg font-black text-green-600">{productiveStores}</p>
           </div>
           <div className="bg-blue-50 rounded-xl p-2 text-center border border-blue-100">
-            <p className="text-[10px] font-bold text-blue-800">📍 Visited</p>
+            <p className="text-[10px] font-bold text-blue-800">Visited</p>
             <p className="text-lg font-black text-blue-600">{visitedStores}</p>
           </div>
           <div className="bg-orange-50 rounded-xl p-2 text-center border border-orange-100">
-            <p className="text-[10px] font-bold text-orange-800">⏱ Pending</p>
+            <p className="text-[10px] font-bold text-orange-800">Pending</p>
             <p className="text-lg font-black text-orange-600">{pendingStores}</p>
           </div>
           <div className="bg-teal-50 rounded-xl p-2 text-center border border-teal-100">
-            <p className="text-[10px] font-bold text-teal-800">🏪 Total</p>
+            <p className="text-[10px] font-bold text-teal-800">Total</p>
             <p className="text-lg font-black text-teal-600">{totalStores}</p>
           </div>
         </div>
@@ -136,7 +134,7 @@ export default function StoresPage() {
                 <div className="flex justify-between items-start">
                   <div className="min-w-0 pr-2">
                     <h3 className="font-bold text-gray-900 text-sm leading-tight truncate">{store.name}</h3>
-                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">{store.city} • {store.distributor_id}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">{store.city} - {store.distributor_id}</p>
                   </div>
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                     isCompleted ? 'bg-green-100 text-green-700' : 
@@ -151,14 +149,14 @@ export default function StoresPage() {
                   <span className="text-[9px] font-bold text-gray-400 truncate w-24">ID: {store.id}</span>
                   {!visit ? (
                     <button onClick={() => handleCheckIn(store.id)} className="bg-blue-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
-                      Start visit →
+                      Start visit
                     </button>
                   ) : isInProgress ? (
-                    <button onClick={() => router.push(/orders/new?storeId={store.id}&distId={store.distributor_id})} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
+                    <button onClick={() => router.push(`/orders/new?storeId=${store.id}&distId=${store.distributor_id}`)} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
                       Take Order
                     </button>
                   ) : (
-                    <button onClick={() => router.push("/orders/new")} className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-gray-200">
+                    <button onClick={() => router.push(`/orders/new?storeId=${store.id}&distId=${store.distributor_id}`)} className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-gray-200">
                       View Summary
                     </button>
                   )}
