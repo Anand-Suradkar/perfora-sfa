@@ -11,6 +11,7 @@ export default function OrdersListPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("All");
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchOrders = async (email) => {
     try {
@@ -30,7 +31,6 @@ export default function OrdersListPage() {
   };
 
   useEffect(() => {
-    // Wait for auth to be ready before fetching
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) fetchOrders(user.email);
     });
@@ -62,8 +62,15 @@ export default function OrdersListPage() {
   return (
     <div className="min-h-screen bg-[#f8f5ff] pb-20">
       <div className="bg-gradient-to-r from-blue-800 to-blue-600 p-4 rounded-b-3xl shadow-lg text-white">
-        <h1 className="text-2xl font-black">Orders</h1>
-        <p className="text-sm opacity-90 mt-1">{orders.length} total orders</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-black">Orders</h1>
+            <p className="text-sm opacity-90 mt-1">{orders.length} total orders</p>
+          </div>
+          <button onClick={() => router.push('/orders/new')} className="bg-white text-blue-800 font-bold px-4 py-2 rounded-xl text-sm shadow-sm">
+            + Create Order
+          </button>
+        </div>
       </div>
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
@@ -89,17 +96,17 @@ export default function OrdersListPage() {
           <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-start mb-2">
               <div>
-                <h3 className="font-black text-gray-900 text-lg leading-tight">{order.store_id}</h3>
-                <p className="text-[10px] text-blue-600 font-bold mt-0.5">{order.distributor_id} • {order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Just now'}</p>
+                <h3 className="font-black text-gray-900 text-lg leading-tight">{order.storeName || order.store_id}</h3>
+                <p className="text-[10px] text-blue-600 font-bold mt-0.5">{order.id.slice(-6).toUpperCase()} • {order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Just now'} • {order.distributor_id}</p>
                 <p className="text-xs text-gray-500 mt-1">{order.items.length} SKUs • {order.items.reduce((a, b) => a + b.qty, 0)} units</p>
               </div>
               <div className="text-right">
-                <p className="font-black text-gray-900 text-lg">₹{Number(order.grand_total).toFixed(2)}</p>
+                <p className="font-black text-gray-900 text-lg">₹{Number(order.grand_total).toFixed(0)}</p>
                 <span className={`text-[10px] font-bold px-2 py-1 rounded-md inline-block mt-1 ${
-                  order.status === 'CREATED' ? 'bg-blue-100 text-blue-700' :
-                  order.status === 'ACCEPTED' ? 'bg-green-100 text-green-700' :
-                  order.status === 'INVOICED' ? 'bg-purple-100 text-purple-700' :
-                  'bg-gray-100 text-gray-600'
+                  order.status === 'CREATED' ? 'bg-orange-500 text-white' :
+                  order.status === 'ACCEPTED' ? 'bg-green-500 text-white' :
+                  order.status === 'INVOICED' ? 'bg-purple-500 text-white' :
+                  'bg-blue-500 text-white'
                 }`}>
                   {order.status}
                 </span>
@@ -107,12 +114,19 @@ export default function OrdersListPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-50">
-              <button className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 rounded-lg border border-blue-100">View</button>
+              <button onClick={() => setSelectedOrder(order)} className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 rounded-lg border border-blue-100">View</button>
               <button className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>
-              <a href={`https://wa.me/?text=Order ${order.id} Total: ${order.grand_total}`} target="_blank" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
+              
+              {(order.status === 'CREATED' || order.status === 'SHARED') && (
+                <a href={`https://wa.me/?text=Order ${order.id} Total: ${order.grand_total}`} target="_blank" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
+              )}
               
               {order.status === 'CREATED' && (
                 <button onClick={() => handleUpdateStatus(order.id, 'ACCEPTED')} className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 rounded-lg shadow-sm">Accept</button>
+              )}
+              
+              {order.status === 'ACCEPTED' && (
+                <button onClick={() => handleUpdateStatus(order.id, 'INVOICED')} className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-lg shadow-sm">Invoice no.</button>
               )}
               
               <button onClick={() => handleDelete(order.id)} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 rounded-lg border border-red-100 ml-auto">Delete</button>
@@ -120,6 +134,37 @@ export default function OrdersListPage() {
           </div>
         ))}
       </div>
+
+      {/* View Order Modal */}
+      {selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-bold">Order Details</h3>
+                <p className="text-xs opacity-80">{selectedOrder.storeName || selectedOrder.store_id}</p>
+              </div>
+              <button onClick={() => setSelectedOrder(null)} className="text-white font-bold text-xl">✕</button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {selectedOrder.items.map((item, idx) => (
+                <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">{item.skuName || item.sku}</p>
+                    <p className="text-xs text-gray-500">Qty: {item.qty} • Scheme: {item.extraScheme}%</p>
+                  </div>
+                  <p className="text-sm font-black text-gray-900">₹{Number(item.net).toFixed(2)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 bg-gray-50 flex justify-between items-center">
+              <p className="font-bold text-gray-600">Grand Total</p>
+              <p className="text-xl font-black text-blue-700">₹{Number(selectedOrder.grand_total).toFixed(2)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
     </div>
   );

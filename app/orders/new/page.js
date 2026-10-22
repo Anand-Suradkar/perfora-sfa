@@ -127,6 +127,7 @@ export default function NewOrderPage() {
         SO_email: auth.currentUser.email,
         distributor_id: selectedDist,
         store_id: selectedStore,
+        storeName: stores.find(s => s.id === selectedStore)?.name || selectedStore,
         items: finalItems,
         grand_total: grandTotal,
         total_claim: totalClaim,
