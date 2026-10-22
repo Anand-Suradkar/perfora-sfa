@@ -81,8 +81,7 @@ export default function OrdersListPage() {
               <button 
                 key={s}
                 onClick={() => setFilter(s)}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shadow-sm border transition-colors
-                  ${filter === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                className={"px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap shadow-sm border transition-colors " + (filter === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200')}
               >
                 {s === "All" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()} ({count})
               </button>
@@ -104,12 +103,7 @@ export default function OrdersListPage() {
               </div>
               <div className="text-right">
                 <p className="font-black text-gray-900 text-lg">₹{Number(order.grand_total).toFixed(0)}</p>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-md inline-block mt-1 ${
-                  order.status === 'CREATED' ? 'bg-orange-500 text-white' :
-                  order.status === 'ACCEPTED' ? 'bg-green-500 text-white' :
-                  order.status === 'INVOICED' ? 'bg-purple-500 text-white' :
-                  'bg-blue-500 text-white'
-                }`}>
+                <span className={"text-[10px] font-bold px-2 py-1 rounded-md inline-block mt-1 " + (order.status === 'CREATED' ? 'bg-orange-500 text-white' : order.status === 'ACCEPTED' ? 'bg-green-500 text-white' : order.status === 'INVOICED' ? 'bg-purple-500 text-white' : 'bg-blue-500 text-white')}>
                   {order.status}
                 </span>
               </div>
@@ -117,10 +111,10 @@ export default function OrdersListPage() {
 
             <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-gray-50">
               <button onClick={() => setSelectedOrder(order)} className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 rounded-lg border border-blue-100">View</button>
-              <button onClick={() => router.push(`/cart?editId=${order.id}`)} className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>
+              <button onClick={() => router.push('/cart?editId=' + order.id)} className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>
               
               {(order.status === 'CREATED' || order.status === 'SHARED') && (
-                <a href={`https://wa.me/?text=Order ${order.id} Total: ${order.grand_total}`} target="_blank" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
+                <a href={'https://wa.me/?text=Order ' + order.id + ' Total: ' + order.grand_total} target="_blank" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
               )}
               
               {order.status === 'CREATED' && (
