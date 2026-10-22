@@ -9,12 +9,26 @@ import BottomNav from "../components/BottomNav";
 export default function OrdersListPage() {
   const router = useRouter();
   const [orders, setOrders] = useState([]);
+  const [distributors, setDistributors] = useState({});
+  const [stores, setStores] = useState({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("All");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchOrders = async (email) => {
     try {
+      // 1. Fetch Distributors and Stores for name mapping
+      const distSnap = await getDocs(collection(db, "distributors"));
+      const distMap = {};
+      distSnap.docs.forEach(d => { distMap[d.id] = d.data().name; });
+      setDistributors(distMap);
+
+      const storeSnap = await getDocs(collection(db, "stores"));
+      const storeMap = {};
+      storeSnap.docs.forEach(d => { storeMap[d.id] = d.data().name; });
+      setStores(storeMap);
+
+      // 2. Fetch Orders
       const isAdmin = email === "anand@perforacare.com";
       const q = isAdmin 
         ? query(collection(db, "orders"))
@@ -56,6 +70,29 @@ export default function OrdersListPage() {
     }
   };
 
+  const getWhatsAppLink = (order) => {
+    const sName = order.storeName && order.storeName !== "Store" 
+      ? order.storeName 
+      : stores[order.store_id] || order.store_id;
+
+    const dName = distributors[order.distributor_id] || order.distributor_id;
+    const dateStr = order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString('en-GB').replace(/\//g, '-') : '';
+    const scheme = order.items[0]?.extraScheme || 0;
+
+    let text = `${sName}\n`;
+    text += `PERFORA ORDER\n`;
+    text += `Date: ${dateStr}\n`;
+    text += `Distributor: ${dName}\n\n`;
+    text += `ITEMS\n`;
+    order.items.forEach((item, index) => {
+      text += `${index + 1}. ${item.sku}-${item.skuName}-${item.qty}pc\n`;
+    });
+    text += `\nExtra Margin: 25% + ${scheme}% = ${25 + scheme}%\n`;
+    text += `Order Value (incl. GST): ₹${Number(order.grand_total).toFixed(2)}`;
+    
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  };
+
   const statuses = ["All", "CREATED", "SHARED", "ACCEPTED", "INVOICED"];
   const filteredOrders = orders.filter(o => filter === "All" || o.status === filter);
 
@@ -91,11 +128,17 @@ export default function OrdersListPage() {
 
         {loading ? <p className="text-center font-bold text-gray-500 mt-10">Loading...</p> : 
          filteredOrders.length === 0 ? <p className="text-center font-bold text-gray-500 mt-10">No orders found.</p> :
-         filteredOrders.map((order) => (
+         filteredOrders.map((order) => {
+          // Fallback to store map if the saved name is "Store"
+          const displayStoreName = (order.storeName && order.storeName !== "Store") 
+            ? order.storeName 
+            : stores[order.store_id] || order.store_id;
+
+          return (
           <div key={order.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex justify-between items-start mb-2">
               <div>
-                <h3 className="font-black text-gray-900 text-lg leading-tight">{order.storeName || order.store_id}</h3>
+                <h3 className="font-black text-gray-900 text-lg leading-tight">{displayStoreName}</h3>
                 <p className="text-[10px] text-blue-600 font-bold mt-0.5">
                   {order.id.slice(-6).toUpperCase()} | {order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Just now'} | {order.distributor_id}
                 </p>
@@ -114,7 +157,7 @@ export default function OrdersListPage() {
               <button onClick={() => router.push('/cart?editId=' + order.id)} className="px-3 py-1.5 text-xs font-bold text-orange-700 bg-orange-50 rounded-lg border border-orange-100">Edit</button>
               
               {(order.status === 'CREATED' || order.status === 'SHARED') && (
-                <a href={'https://wa.me/?text=Order ' + order.id + ' Total: ' + order.grand_total} target="_blank" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
+                <a href={getWhatsAppLink(order)} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs font-bold text-white bg-green-500 rounded-lg shadow-sm">WhatsApp</a>
               )}
               
               {order.status === 'CREATED' && (
@@ -128,7 +171,7 @@ export default function OrdersListPage() {
               <button onClick={() => handleDelete(order.id)} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 rounded-lg border border-red-100 ml-auto">Delete</button>
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       {selectedOrder && (
