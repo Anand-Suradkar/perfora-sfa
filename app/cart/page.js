@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { db, auth } from "../lib/firebase";
 import { collection, getDocs, addDoc, doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useRouter, useSearchParams } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 
-export default function CartPage() {
+function CartContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("editId");
@@ -24,7 +24,6 @@ export default function CartPage() {
       setSkus(skuList);
 
       if (editId) {
-        // Edit Mode: Fetch existing order
         const docRef = doc(db, "orders", editId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
@@ -34,7 +33,6 @@ export default function CartPage() {
           setCart(data.items.map(i => ({ sku: i.sku, qty: i.qty })));
         }
       } else {
-        // New Order Mode: Read from local storage
         const savedCart = JSON.parse(localStorage.getItem("perfora_cart") || "[]");
         const savedContext = JSON.parse(localStorage.getItem("perfora_order_context") || "{}");
         setCart(savedCart);
@@ -175,5 +173,13 @@ export default function CartPage() {
       </div>
       <BottomNav />
     </div>
+  );
+}
+
+export default function CartPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center font-bold text-blue-600">Loading cart...</div>}>
+      <CartContent />
+    </Suspense>
   );
 }
