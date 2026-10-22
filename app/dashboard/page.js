@@ -222,11 +222,11 @@ export default function DashboardPage() {
           </div>
           <div className="bg-orange-100 p-4 rounded-3xl shadow-sm border border-orange-200 text-orange-900">
             <p className="text-xs font-bold flex items-center gap-1">🎯 FTD Sec</p>
-            <h2 className="text-2xl font-black mt-1">₹{ftdSec.toLocaleString()}</h2>
+            <h2 className="text-2xl font-black mt-1">₹{ftdSec.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h2>
           </div>
           <div className="bg-teal-100 p-4 rounded-3xl shadow-sm border border-teal-200 text-teal-900">
             <p className="text-xs font-bold flex items-center gap-1">📈 MTD Sec</p>
-            <h2 className="text-2xl font-black mt-1">₹{mtdSec.toLocaleString()}</h2>
+            <h2 className="text-2xl font-black mt-1">₹{mtdSec.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h2>
           </div>
           <div className="bg-green-100 p-4 rounded-3xl shadow-sm border border-green-200 text-green-900 flex flex-col justify-between">
             <div>

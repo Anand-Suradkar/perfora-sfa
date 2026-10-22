@@ -9,6 +9,7 @@ import BottomNav from "../components/BottomNav";
 export default function StoresPage() {
   const router = useRouter();
   const [stores, setStores] = useState([]);
+  const [distributors, setDistributors] = useState({});
   const [visits, setVisits] = useState({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -20,6 +21,12 @@ export default function StoresPage() {
       try {
         const isAdmin = user.email === "anand@perforacare.com";
         
+        // Fetch Distributors for names
+        const distSnap = await getDocs(collection(db, "distributors"));
+        const distMap = {};
+        distSnap.docs.forEach(d => { distMap[d.id] = d.data().name; });
+        setDistributors(distMap);
+
         const storeQ = isAdmin 
           ? query(collection(db, "stores")) 
           : query(collection(db, "stores"), where("SO_email", "==", user.email));
@@ -128,19 +135,16 @@ export default function StoresPage() {
             const visit = visits[store.id];
             const isCompleted = visit?.status === "COMPLETED";
             const isInProgress = visit?.status === "IN_PROGRESS";
+            const distName = distributors[store.distributor_id] || store.distributor_id;
 
             return (
               <div key={store.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 mb-2">
                 <div className="flex justify-between items-start">
                   <div className="min-w-0 pr-2">
                     <h3 className="font-bold text-gray-900 text-sm leading-tight truncate">{store.name}</h3>
-                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">{store.city} - {store.distributor_id}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">{store.city} - {distName}</p>
                   </div>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                    isCompleted ? 'bg-green-100 text-green-700' : 
-                    isInProgress ? 'bg-blue-100 text-blue-700' : 
-                    'bg-orange-100 text-orange-700'
-                  }`}>
+                  <span className={"text-[9px] font-bold px-1.5 py-0.5 rounded " + (isCompleted ? 'bg-green-100 text-green-700' : isInProgress ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}>
                     {isCompleted ? 'DONE' : isInProgress ? 'IN PROGRESS' : 'PENDING'}
                   </span>
                 </div>
@@ -152,11 +156,11 @@ export default function StoresPage() {
                       Start visit
                     </button>
                   ) : isInProgress ? (
-                    <button onClick={() => router.push(`/orders/new?storeId=${store.id}&distId=${store.distributor_id}`)} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
+                    <button onClick={() => router.push('/orders/new?storeId=' + store.id + '&distId=' + store.distributor_id)} className="bg-purple-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg shadow-sm">
                       Take Order
                     </button>
                   ) : (
-                    <button onClick={() => router.push(`/orders/new?storeId=${store.id}&distId=${store.distributor_id}`)} className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-gray-200">
+                    <button onClick={() => router.push('/orders/new?storeId=' + store.id + '&distId=' + store.distributor_id)} className="bg-gray-100 text-gray-700 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-gray-200">
                       View Summary
                     </button>
                   )}

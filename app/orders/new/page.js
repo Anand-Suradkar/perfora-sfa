@@ -20,7 +20,6 @@ function OrderTakingForm() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]);
 
-  // Load cart from local storage & preselect store from URL
   useEffect(() => {
     const savedCart = JSON.parse(localStorage.getItem("perfora_cart") || "[]");
     setCart(savedCart);
@@ -50,7 +49,6 @@ function OrderTakingForm() {
     fetchData();
   }, []);
 
-  // If URL had a store, set the dist based on the store's mapping
   useEffect(() => {
     if (selectedStore && stores.length > 0) {
       const storeObj = stores.find(s => s.id === selectedStore);
@@ -61,10 +59,13 @@ function OrderTakingForm() {
   const filteredStores = stores.filter(s => s.distributor_id === selectedDist);
   const categories = ["All", ...new Set(skus.map(s => s.category || "General"))];
 
+  // FIXED SEARCH LOGIC
   const filteredSkus = skus.filter(s => {
     const matchesCat = activeCategory === "All" || (s.category || "General") === activeCategory;
-    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.sku.toLowerCase().includes(search.toLowerCase());
-    return matchesCat && matchesSearch;
+    const searchLower = search.toLowerCase();
+    const nameMatch = s.name ? s.name.toLowerCase().includes(searchLower) : false;
+    const skuMatch = s.sku ? s.sku.toLowerCase().includes(searchLower) : false;
+    return matchesCat && (nameMatch || skuMatch);
   });
 
   const updateQty = (skuId, delta) => {
@@ -98,7 +99,6 @@ function OrderTakingForm() {
       </div>
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
-        {/* Selectors */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-3">
           <div>
             <label className="text-[10px] font-bold text-gray-500 block">DISTRIBUTOR</label>
@@ -118,14 +118,13 @@ function OrderTakingForm() {
           </div>
         </div>
 
-        {/* Catalogue */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-bold text-gray-800">Product catalogue</h3>
-            <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{skus.length} SKUs</span>
+            <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{filteredSkus.length} SKUs</span>
           </div>
           
-          <input type="text" placeholder="Search SKU / PER code" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm mb-3" value={search} onChange={e => setSearch(e.target.value)} />
+          <input type="text" placeholder="Search SKU / Product Name" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm mb-3" value={search} onChange={e => setSearch(e.target.value)} />
 
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mb-3">
             {categories.map(cat => (
@@ -136,16 +135,22 @@ function OrderTakingForm() {
             ))}
           </div>
 
-          <p className="text-[10px] text-gray-400 font-bold mb-3 flex justify-between">Swipe left/right to browse 4 SKUs at a time <span>↔</span></p>
-
           <div className="space-y-3">
             {filteredSkus.map(sku => (
               <div key={sku.sku} className="flex items-center gap-3 border border-gray-100 p-2 rounded-xl">
-                <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-xl">📦</div>
+                {/* IMAGE FIX */}
+                <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0">
+                  {sku.img ? (
+                    <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" />
+                  ) : (
+                    "📦"
+                  )}
+                </div>
+                
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-bold text-purple-600">{sku.sku}</p>
                   <p className="text-xs font-black text-gray-800 leading-tight truncate">{sku.name}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">MRP ₹{sku.mrp} <span className="text-gray-400">Rate ex-GST ₹{(sku.mrp / 1.18 * 0.75).toFixed(2)}</span></p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">MRP ₹{sku.mrp} <span className="text-gray-400">Rate ex-GST ₹{((sku.mrp / 1.18) * 0.75).toFixed(2)}</span></p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => updateQty(sku.sku, -1)} className="w-7 h-7 bg-gray-100 rounded-full font-bold">−</button>
@@ -158,13 +163,12 @@ function OrderTakingForm() {
         </div>
       </div>
 
-      {/* Sticky Cart Bar */}
       {cart.length > 0 && (
         <div className="fixed bottom-16 w-full max-w-md left-1/2 -translate-x-1/2 bg-white border-t border-gray-200 p-3 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-40">
           <div className="flex justify-between items-center bg-blue-50 p-2 rounded-xl">
             <div>
               <p className="text-[10px] font-bold text-gray-500">Cart • {cart.length} SKU • {cart.reduce((a, b) => a + b.qty, 0)} units</p>
-              <p className="text-sm font-black text-gray-900">₹ ---</p>
+              <p className="text-sm font-black text-gray-900">Ready to Review</p>
             </div>
             <button onClick={proceedToCart} className="bg-blue-600 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-md">
               View cart →

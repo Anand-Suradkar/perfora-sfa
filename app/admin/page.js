@@ -47,7 +47,8 @@ export default function AdminPage() {
             mrp: Number(row.MRP),
             gst: Number(row.GST) || 0, 
             category: row.Category || "General",
-            is_focus: String(row.is_focus).toLowerCase() === "true"
+            is_focus: String(row.is_focus).toLowerCase() === "true",
+            img: row.Image_URL || row.img || "",
           });
         }
         alert(`Uploaded/Updated ${results.data.length} SKUs!`);
