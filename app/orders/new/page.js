@@ -146,7 +146,7 @@ function OrderTakingForm() {
                 {/* IMAGE LOGIC: Tries to load sku.img, if missing shows a box */}
                 <div className="w-14 h-14 bg-gray-50 rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0 border border-gray-100">
                   {sku.img ? (
-                    <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                    <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
                   ) : null}
                   <span className={sku.img ? "hidden" : "block"}>📦</span>
                 </div>
