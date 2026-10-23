@@ -5,12 +5,15 @@ import { db, auth } from "../lib/firebase";
 import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+import Papa from "papaparse";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("stores");
+  const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [distFilter, setDistFilter] = useState("ALL");
+  const [soFilter, setSoFilter] = useState("ALL");
 
   // --- DATA STATES ---
   const [skus, setSkus] = useState([]);
@@ -31,6 +34,11 @@ export default function AdminPage() {
   const [skuForm, setSkuForm] = useState({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false, img: "" });
   const [userForm, setUserForm] = useState({ email: "", name: "", role: "SO" });
 
+  // Dynamic Greeting
+  const hr = new Date().getHours();
+  const greeting = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
+  const adminName = auth.currentUser?.displayName || "Admin";
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -38,10 +46,11 @@ export default function AdminPage() {
       setSkus(skuSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.sku.localeCompare(b.sku)));
 
       const distSnap = await getDocs(collection(db, "distributors"));
-      setDistributors(distSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)));
+      const dList = distSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setDistributors(dList);
 
       const storeSnap = await getDocs(collection(db, "stores"));
-      setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)));
+      setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       const userSnap = await getDocs(collection(db, "users"));
       setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -51,13 +60,31 @@ export default function AdminPage() {
       let allClaims = [];
       orderSnap.docs.forEach(d => {
         const order = d.data();
+        const invNo = d.id.slice(-6).toUpperCase();
+        const soEmail = order.SO_email || "";
+        const dName = dList.find(x => x.id === order.distributor_id)?.name || order.distributor_id;
+
         order.items.forEach(i => {
           if (i.extraScheme > 0) {
-            allClaims.push({ ...i, orderId: d.id, store: order.storeName, dist: order.distributor_id, date: new Date(order.createdAt.toMillis()).toLocaleDateString() });
+            allClaims.push({ 
+              invoiceNo: invNo,
+              orderId: d.id,
+              date: new Date(order.createdAt.toMillis()).toLocaleDateString(),
+              store: order.storeName || order.store_id,
+              distId: order.distributor_id,
+              distName: dName,
+              soEmail: soEmail,
+              sku: i.sku,
+              skuName: i.skuName,
+              mrp: i.mrp,
+              qty: i.qty,
+              scheme: i.extraScheme,
+              claimAmount: Number(i.claim)
+            });
           }
         });
       });
-      setClaims(allClaims);
+      setClaims(allClaims.sort((a,b) => new Date(b.date) - new Date(a.date)));
     } catch (error) {
       console.error(error);
     }
@@ -101,61 +128,119 @@ export default function AdminPage() {
     setShowUserModal(false); fetchData();
   };
 
-  // ================= DELETE HANDLERS =================
-  const deleteItem = async (collectionName, id) => {
+  const deleteItem = async (col, id) => {
     if (!confirm(`Delete ${id}?`)) return;
-    await deleteDoc(doc(db, collectionName, id));
+    await deleteDoc(doc(db, col, id));
     fetchData();
   };
 
-  // Filtering
-  const filteredStores = stores.filter(s => 
-    s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    s.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.SO_email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ================= EXPORT CLAIMS =================
+  const exportClaims = () => {
+    const headers = ["Date", "Invoice No", "Distributor", "SO Email", "Store", "SKU", "SKU Name", "MRP", "Qty", "Scheme %", "Claim Amount"];
+    const data = filteredClaims.map(c => [c.date, c.invoiceNo, c.distName, c.soEmail, c.store, c.sku, c.skuName, c.mrp, c.qty, c.scheme, c.claimAmount]);
+    const csv = Papa.unparse({ fields: headers, data });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Claims_Export_${new Date().toLocaleDateString()}.csv`;
+    link.click();
+  };
+
+  // Filtering logic
+  const filteredStores = stores.filter(s => {
+    const matchSearch = s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || s.id?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchDist = distFilter === "ALL" || s.distributor_id === distFilter;
+    return matchSearch && matchDist;
+  });
+
+  const filteredClaims = claims.filter(c => {
+    const matchDist = distFilter === "ALL" || c.distId === distFilter;
+    const matchSO = soFilter === "ALL" || c.soEmail === soFilter;
+    return matchDist && matchSO;
+  });
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-20 md:pb-0 font-sans">
+    <div className="min-h-screen bg-[#F3F4F6] font-sans pb-20 md:pb-0">
       
-      {/* Header */}
-      <div className="bg-gray-900 text-white p-4 md:p-6 shadow-md flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black">Admin Control Center</h1>
+      {/* Top Navigation Bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-black text-gray-800 tracking-tight">Perfora Admin</h1>
         </div>
-        <div className="hidden md:flex gap-4 text-sm font-bold">
-          <div className="bg-gray-800 px-4 py-2 rounded-lg">SKUs: {skus.length}</div>
-          <div className="bg-gray-800 px-4 py-2 rounded-lg">Distributors: {distributors.length}</div>
-          <div className="bg-gray-800 px-4 py-2 rounded-lg">Stores: {stores.length}</div>
+        <div className="flex items-center gap-4">
+          <div className="text-right hidden md:block">
+            <p className="text-sm font-bold text-gray-800">{greeting}, {adminName.split(' ')[0]}!</p>
+            <p className="text-xs text-gray-500">Wed, 22 Oct 2026</p>
+          </div>
+          <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center font-bold text-gray-700">
+            AD
+          </div>
         </div>
       </div>
 
-      {/* Main Layout */}
-      <div className="max-w-7xl mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-6">
+      <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row min-h-[calc(100vh-73px)]">
         
         {/* Sidebar */}
-        <div className="w-full md:w-64 flex-shrink-0 space-y-2">
-          <button onClick={() => setActiveTab("stores")} className={"w-full px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "stores" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700')}>🏪 Store Management</button>
-          <button onClick={() => setActiveTab("distributors")} className={"w-full px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "distributors" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700')}>🏢 Distributors</button>
-          <button onClick={() => setActiveTab("users")} className={"w-full px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "users" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700')}>👥 Users (SOs)</button>
-          <button onClick={() => setActiveTab("skus")} className={"w-full px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "skus" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700')}>📦 SKU Master</button>
-          <button onClick={() => setActiveTab("claims")} className={"w-full px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "claims" ? 'bg-orange-600 text-white shadow-md' : 'bg-white text-gray-700')}>💰 Claim Reports</button>
+        <div className="w-full md:w-64 bg-white border-r border-gray-200 p-4 space-y-1">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Menu</p>
+          <button onClick={() => setActiveTab("overview")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "overview" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>📊 Overview</button>
+          <button onClick={() => setActiveTab("stores")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "stores" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>🏪 Stores</button>
+          <button onClick={() => setActiveTab("distributors")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "distributors" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>🏢 Distributors</button>
+          <button onClick={() => setActiveTab("users")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "users" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>👥 Users (SOs)</button>
+          <button onClick={() => setActiveTab("skus")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "skus" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>📦 SKU Master</button>
+          <button onClick={() => setActiveTab("claims")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "claims" ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50')}>💰 Claims</button>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1">
+        {/* Main Content */}
+        <div className="flex-1 p-6 overflow-hidden">
           
-          {/* ================= STORES TAB ================= */}
+          {/* OVERVIEW TAB */}
+          {activeTab === "overview" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-5 rounded-2xl shadow-sm text-white">
+                  <p className="text-sm font-bold opacity-80">Total Stores</p>
+                  <h2 className="text-3xl font-black mt-2">{stores.length}</h2>
+                </div>
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-5 rounded-2xl shadow-sm text-white">
+                  <p className="text-sm font-bold opacity-80">Total SKUs</p>
+                  <h2 className="text-3xl font-black mt-2">{skus.length}</h2>
+                </div>
+                <div className="bg-gradient-to-br from-green-500 to-green-600 p-5 rounded-2xl shadow-sm text-white">
+                  <p className="text-sm font-bold opacity-80">Distributors</p>
+                  <h2 className="text-3xl font-black mt-2">{distributors.length}</h2>
+                </div>
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 rounded-2xl shadow-sm text-white">
+                  <p className="text-sm font-bold opacity-80">Total Claims</p>
+                  <h2 className="text-3xl font-black mt-2">₹{claims.reduce((a,c) => a + c.claimAmount, 0).toFixed(0)}</h2>
+                </div>
+              </div>
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">Quick Actions</h2>
+                <div className="flex gap-4">
+                  <button onClick={() => { setActiveTab("claims"); exportClaims(); }} className="bg-orange-100 text-orange-700 font-bold px-6 py-3 rounded-xl hover:bg-orange-200">⬇ Export Claims Data</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STORES TAB */}
           {activeTab === "stores" && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
-                <h2 className="text-lg font-bold text-gray-800">Store List ({filteredStores.length})</h2>
+                <h2 className="text-lg font-bold text-gray-800">Store Management ({filteredStores.length})</h2>
                 <div className="flex gap-2 w-full md:w-auto">
-                  <input type="text" placeholder="Search stores..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="p-2 border rounded-lg text-sm flex-1" />
+                  <select value={distFilter} onChange={e => setDistFilter(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                    <option value="ALL">All Distributors</option>
+                    {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <input type="text" placeholder="Search store..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="p-2 border rounded-lg text-sm flex-1" />
                   <button onClick={() => { setStoreForm({ id: "", name: "", owner: "", distributor_id: "", SO_email: "", status: "Active" }); setShowStoreModal(true); }} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm whitespace-nowrap">+ Add Store</button>
                 </div>
               </div>
-              <div className="overflow-x-auto max-h-[600px]">
+              <div className="overflow-x-auto max-h-[650px]">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
                     <tr><th className="p-3">Store Name</th><th className="p-3">Distributor</th><th className="p-3">SO Email</th><th className="p-3">Status</th><th className="p-3 text-right">Actions</th></tr>
@@ -179,34 +264,52 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ================= DISTRIBUTORS TAB ================= */}
-          {activeTab === "distributors" && (
-             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                 <h2 className="text-lg font-bold text-gray-800">Distributors ({distributors.length})</h2>
-                 <button onClick={() => { setDistForm({ id: "", name: "", city: "", so_emails: "" }); setShowDistModal(true); }} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add Distributor</button>
-               </div>
-               <div className="overflow-x-auto max-h-[600px]">
-                 <table className="w-full text-left text-sm">
-                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
-                     <tr><th className="p-3">Distributor</th><th className="p-3">City</th><th className="p-3">Mapped SOs</th><th className="p-3 text-right">Actions</th></tr>
-                   </thead>
-                   <tbody className="divide-y divide-gray-100">
-                     {distributors.map(d => (
-                       <tr key={d.id} className="hover:bg-gray-50">
-                         <td className="p-3 font-bold text-gray-800">{d.name} <br/><span className="text-[10px] text-gray-400">{d.id}</span></td>
-                         <td className="p-3 text-gray-600">{d.city || "-"}</td>
-                         <td className="p-3 text-blue-600 text-xs font-bold">{d.mapped_SO_emails?.join(", ") || "Unmapped"}</td>
-                         <td className="p-3 text-right space-x-2">
-                            <button onClick={() => { setDistForm({ id: d.id, name: d.name, city: d.city || "", so_emails: d.mapped_SO_emails ? d.mapped_SO_emails.join(", ") : "" }); setShowDistModal(true); }} className="text-blue-600 font-bold text-xs">Edit</button>
-                            <button onClick={() => deleteItem("distributors", d.id)} className="text-red-600 font-bold text-xs">Delete</button>
-                          </td>
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-             </div>
+          {/* CLAIMS TAB */}
+          {activeTab === "claims" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
+                <h2 className="text-lg font-bold text-orange-800">Claims Dashboard</h2>
+                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                  <select value={distFilter} onChange={e => setDistFilter(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                    <option value="ALL">All Distributors</option>
+                    {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <select value={soFilter} onChange={e => setSoFilter(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                    <option value="ALL">All SOs</option>
+                    {users.filter(u => u.role === "SO").map(u => <option key={u.id} value={u.email}>{u.email}</option>)}
+                  </select>
+                  <button onClick={exportClaims} className="bg-green-600 text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm flex items-center gap-2">⬇ Export CSV</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[650px]">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                    <tr><th className="p-3">Invoice / Date</th><th className="p-3">Distributor / SO</th><th className="p-3">Store</th><th className="p-3">SKU Details</th><th className="p-3">Scheme</th><th className="p-3 text-right">Claim Amount</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredClaims.map((c, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="p-3">
+                          <p className="font-bold text-blue-700">{c.invoiceNo}</p>
+                          <p className="text-[10px] text-gray-500">{c.date}</p>
+                        </td>
+                        <td className="p-3">
+                          <p className="font-bold text-gray-800">{c.distName}</p>
+                          <p className="text-[10px] text-gray-500">{c.soEmail}</p>
+                        </td>
+                        <td className="p-3 font-semibold text-gray-700">{c.store}</td>
+                        <td className="p-3">
+                          <p className="font-bold text-gray-800">{c.sku}</p>
+                          <p className="text-[10px] text-gray-500">{c.skuName} (MRP: ₹{c.mrp})</p>
+                        </td>
+                        <td className="p-3 font-bold text-orange-600">{c.scheme}% <br/><span className="text-[10px] text-gray-500 font-normal">Qty: {c.qty}</span></td>
+                        <td className="p-3 text-right font-black text-gray-900">₹{c.claimAmount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {/* ================= USERS TAB ================= */}
@@ -216,7 +319,7 @@ export default function AdminPage() {
                  <h2 className="text-lg font-bold text-gray-800">Sales Officers ({users.length})</h2>
                  <button onClick={() => { setUserForm({ email: "", name: "", role: "SO" }); setShowUserModal(true); }} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add User</button>
                </div>
-               <div className="overflow-x-auto max-h-[600px]">
+               <div className="overflow-x-auto max-h-[650px]">
                  <table className="w-full text-left text-sm">
                    <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
                      <tr><th className="p-3">Email</th><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3 text-right">Actions</th></tr>
@@ -239,6 +342,36 @@ export default function AdminPage() {
              </div>
           )}
 
+          {/* ================= DISTRIBUTORS TAB ================= */}
+          {activeTab === "distributors" && (
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                 <h2 className="text-lg font-bold text-gray-800">Distributors ({distributors.length})</h2>
+                 <button onClick={() => { setDistForm({ id: "", name: "", city: "", so_emails: "" }); setShowDistModal(true); }} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add Distributor</button>
+               </div>
+               <div className="overflow-x-auto max-h-[650px]">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                     <tr><th className="p-3">Distributor</th><th className="p-3">City</th><th className="p-3">Mapped SOs</th><th className="p-3 text-right">Actions</th></tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {distributors.map(d => (
+                       <tr key={d.id} className="hover:bg-gray-50">
+                         <td className="p-3 font-bold text-gray-800">{d.name} <br/><span className="text-[10px] text-gray-400">{d.id}</span></td>
+                         <td className="p-3 text-gray-600">{d.city || "-"}</td>
+                         <td className="p-3 text-blue-600 text-xs font-bold">{d.mapped_SO_emails?.join(", ") || "Unmapped"}</td>
+                         <td className="p-3 text-right space-x-2">
+                            <button onClick={() => { setDistForm({ id: d.id, name: d.name, city: d.city || "", so_emails: d.mapped_SO_emails ? d.mapped_SO_emails.join(", ") : "" }); setShowDistModal(true); }} className="text-blue-600 font-bold text-xs">Edit</button>
+                            <button onClick={() => deleteItem("distributors", d.id)} className="text-red-600 font-bold text-xs">Delete</button>
+                          </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+             </div>
+          )}
+
           {/* ================= SKU TAB ================= */}
           {activeTab === "skus" && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -246,7 +379,7 @@ export default function AdminPage() {
                 <h2 className="text-lg font-bold text-gray-800">SKU Master ({skus.length})</h2>
                 <button onClick={() => { setSkuForm({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false, img: "" }); setShowSkuModal(true); }} className="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add SKU</button>
               </div>
-              <div className="overflow-x-auto max-h-[600px]">
+              <div className="overflow-x-auto max-h-[650px]">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
                     <tr><th className="p-3">SKU</th><th className="p-3">Name</th><th className="p-3">MRP</th><th className="p-3">GST</th><th className="p-3">Category</th><th className="p-3 text-right">Actions</th></tr>
@@ -263,34 +396,6 @@ export default function AdminPage() {
                           <button onClick={() => { setSkuForm(s); setShowSkuModal(true); }} className="text-blue-600 font-bold text-xs">Edit</button>
                           <button onClick={() => deleteItem("sku_master", s.id)} className="text-red-600 font-bold text-xs">Delete</button>
                         </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ================= CLAIMS TAB ================= */}
-          {activeTab === "claims" && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b bg-orange-50">
-                <h2 className="text-lg font-bold text-orange-800">Total Extra Scheme Claims: ₹{claims.reduce((a,c) => a + Number(c.claim), 0).toFixed(2)}</h2>
-              </div>
-              <div className="overflow-x-auto max-h-[600px]">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
-                    <tr><th className="p-3">Date</th><th className="p-3">Store</th><th className="p-3">SKU</th><th className="p-3">Qty</th><th className="p-3">Scheme</th><th className="p-3 text-right">Claim Amount</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {claims.map((c, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="p-3 text-gray-500 text-xs">{c.date}</td>
-                        <td className="p-3 font-bold text-gray-800">{c.store || c.orderId}</td>
-                        <td className="p-3 text-gray-600">{c.sku}</td>
-                        <td className="p-3 text-gray-600">{c.qty}</td>
-                        <td className="p-3 font-bold text-orange-600">{c.extraScheme}%</td>
-                        <td className="p-3 text-right font-black text-gray-900">₹{Number(c.claim).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -381,7 +486,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
             <h2 className="text-lg font-bold mb-4">{userForm.id ? "Edit User" : "Add User"}</h2>
             <form onSubmit={saveUser} className="space-y-3">
-              <input required type="email" placeholder="Google Email (e.g. name@perforacare.com)" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} disabled={!!userForm.id} className="w-full p-2 border rounded-lg disabled:bg-gray-100" />
+              <input required type="email" placeholder="Google Email" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} disabled={!!userForm.id} className="w-full p-2 border rounded-lg disabled:bg-gray-100" />
               <input type="text" placeholder="Full Name" value={userForm.name || ""} onChange={e => setUserForm({...userForm, name: e.target.value})} className="w-full p-2 border rounded-lg" />
               <select value={userForm.role || "SO"} onChange={e => setUserForm({...userForm, role: e.target.value})} className="w-full p-2 border rounded-lg">
                 <option value="SO">Sales Officer</option>

@@ -1,4 +1,4 @@
-"use client";
+"use client";import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
 
 import { useEffect, useState } from "react";
 import { auth, db } from "../lib/firebase";
@@ -25,6 +25,16 @@ export default function DashboardPage() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) { router.push("/"); return; }
+              // AUTO-REGISTER USER IN DATABASE
+        try {
+          await setDoc(doc(db, "users", u.email), {
+            email: u.email,
+            name: u.displayName || u.email.split('@')[0],
+            role: u.email === "anand@perforacare.com" ? "Admin" : "SO"
+          }, { merge: true });
+        } catch (e) {
+          console.error("Error saving user", e);
+        }
       setUser(u);
 
       try {
