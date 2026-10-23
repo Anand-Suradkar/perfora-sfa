@@ -8,21 +8,26 @@ import BottomNav from "../components/BottomNav";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("distributors");
+  const [activeTab, setActiveTab] = useState("stores"); // Default to stores
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // --- DATA STATES ---
   const [skus, setSkus] = useState([]);
   const [distributors, setDistributors] = useState([]);
   const [stores, setStores] = useState([]);
 
-  // --- SKU FORM STATE ---
-  const [skuForm, setSkuForm] = useState({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false });
-  const [editingSku, setEditingSku] = useState(null);
+  // --- STORE FORM STATE ---
+  const [storeForm, setStoreForm] = useState({ id: "", name: "", owner: "", distributor_id: "", SO_email: "", status: "Active" });
+  const [editingStore, setEditingStore] = useState(null);
 
   // --- DISTRIBUTOR FORM STATE ---
   const [distForm, setDistForm] = useState({ id: "", name: "", city: "", so_emails: "" });
   const [editingDist, setEditingDist] = useState(null);
+
+  // --- SKU FORM STATE ---
+  const [skuForm, setSkuForm] = useState({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false });
+  const [editingSku, setEditingSku] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -34,7 +39,7 @@ export default function AdminPage() {
       setDistributors(distSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)));
 
       const storeSnap = await getDocs(collection(db, "stores"));
-      setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error(error);
     }
@@ -48,29 +53,77 @@ export default function AdminPage() {
     fetchData();
   }, [router]);
 
-  // --- SKU ACTIONS ---
+  // ================= STORE ACTIONS =================
+  const handleSaveStore = async (e) => {
+    e.preventDefault();
+    if (!storeForm.name || !storeForm.distributor_id) return alert("Store Name and Distributor are required");
+    
+    // If editing, use existing ID. If new, generate a timestamp ID.
+    const storeId = editingStore || "STR-" + Date.now();
+    
+    try {
+      await setDoc(doc(db, "stores", storeId), { ...storeForm, id: storeId });
+      alert("Store Saved!");
+      setStoreForm({ id: "", name: "", owner: "", distributor_id: "", SO_email: "", status: "Active" });
+      setEditingStore(null);
+      fetchData();
+    } catch (error) { alert("Error saving store"); }
+  };
+
+  const handleEditStore = (s) => {
+    setStoreForm({ 
+      id: s.id, name: s.name, owner: s.owner || "", distributor_id: s.distributor_id || "", 
+      SO_email: s.SO_email || "", status: s.status || "Active" 
+    });
+    setEditingStore(s.id);
+    window.scrollTo(0, 0);
+  };
+
+  const handleDeleteStore = async (id) => {
+    if (!confirm(`Delete store ${id}? This cannot be undone.`)) return;
+    try { await deleteDoc(doc(db, "stores", id)); fetchData(); } catch (e) { alert("Error deleting"); }
+  };
+
+  // ================= DISTRIBUTOR ACTIONS =================
+  const handleSaveDist = async (e) => {
+    e.preventDefault();
+    if (!distForm.id || !distForm.name) return alert("Distributor ID and Name are required");
+    const emailsArray = distForm.so_emails.split(",").map(email => email.trim().toLowerCase()).filter(email => email !== "");
+    const distId = distForm.id.toUpperCase().trim();
+    
+    try {
+      await setDoc(doc(db, "distributors", distId), { id: distId, name: distForm.name, city: distForm.city, mapped_SO_emails: emailsArray });
+      alert("Distributor Saved!");
+      setDistForm({ id: "", name: "", city: "", so_emails: "" });
+      setEditingDist(null);
+      fetchData();
+    } catch (error) { alert("Error saving Distributor"); }
+  };
+
+  const handleEditDist = (d) => {
+    setDistForm({ id: d.id, name: d.name, city: d.city || "", so_emails: d.mapped_SO_emails ? d.mapped_SO_emails.join(", ") : "" });
+    setEditingDist(d.id);
+    window.scrollTo(0, 0);
+  };
+
+  const handleDeleteDist = async (id) => {
+    if (!confirm(`Delete Distributor ${id}?`)) return;
+    try { await deleteDoc(doc(db, "distributors", id)); fetchData(); } catch (e) { alert("Error deleting"); }
+  };
+
+  // ================= SKU ACTIONS =================
   const handleSaveSku = async (e) => {
     e.preventDefault();
     if (!skuForm.sku || !skuForm.name || !skuForm.mrp) return alert("Fill required fields");
     const skuId = skuForm.sku.toUpperCase().trim();
-    const dataToSave = { ...skuForm, sku: skuId, mrp: Number(skuForm.mrp), gst: Number(skuForm.gst) };
-
+    
     try {
-      if (editingSku) {
-        await updateDoc(doc(db, "sku_master", editingSku), dataToSave);
-      } else {
-        await setDoc(doc(db, "sku_master", skuId), dataToSave);
-      }
+      await setDoc(doc(db, "sku_master", skuId), { ...skuForm, sku: skuId, mrp: Number(skuForm.mrp), gst: Number(skuForm.gst) });
       alert("SKU Saved!");
       setSkuForm({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false });
       setEditingSku(null);
       fetchData();
     } catch (error) { alert("Error saving SKU"); }
-  };
-
-  const handleDeleteSku = async (id) => {
-    if (!confirm(`Delete SKU ${id}?`)) return;
-    try { await deleteDoc(doc(db, "sku_master", id)); fetchData(); } catch (e) { alert("Error deleting"); }
   };
 
   const handleEditSku = (s) => {
@@ -79,178 +132,278 @@ export default function AdminPage() {
     window.scrollTo(0, 0);
   };
 
-  // --- DISTRIBUTOR ACTIONS ---
-  const handleSaveDist = async (e) => {
-    e.preventDefault();
-    if (!distForm.id || !distForm.name) return alert("Distributor ID and Name are required");
-    
-    // Convert comma separated emails to an array
-    const emailsArray = distForm.so_emails.split(",").map(email => email.trim().toLowerCase()).filter(email => email !== "");
-    
-    const distId = distForm.id.toUpperCase().trim();
-    const dataToSave = {
-      id: distId,
-      name: distForm.name,
-      city: distForm.city || "",
-      mapped_SO_emails: emailsArray
-    };
-
-    try {
-      if (editingDist) {
-        await updateDoc(doc(db, "distributors", editingDist), dataToSave);
-      } else {
-        await setDoc(doc(db, "distributors", distId), dataToSave);
-      }
-      alert("Distributor Saved!");
-      setDistForm({ id: "", name: "", city: "", so_emails: "" });
-      setEditingDist(null);
-      fetchData();
-    } catch (error) { alert("Error saving Distributor"); }
+  const handleDeleteSku = async (id) => {
+    if (!confirm(`Delete SKU ${id}?`)) return;
+    try { await deleteDoc(doc(db, "sku_master", id)); fetchData(); } catch (e) { alert("Error deleting"); }
   };
 
-  const handleDeleteDist = async (id) => {
-    if (!confirm(`Delete Distributor ${id}? This will NOT delete their stores, but they won't be visible in the order screen.`)) return;
-    try { await deleteDoc(doc(db, "distributors", id)); fetchData(); } catch (e) { alert("Error deleting"); }
-  };
-
-  const handleEditDist = (d) => {
-    setDistForm({ 
-      id: d.id, 
-      name: d.name, 
-      city: d.city || "", 
-      so_emails: d.mapped_SO_emails ? d.mapped_SO_emails.join(", ") : "" 
-    });
-    setEditingDist(d.id);
-    window.scrollTo(0, 0);
-  };
+  // Filtering
+  const filteredStores = stores.filter(s => 
+    s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    s.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.SO_email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-gradient-to-r from-gray-800 to-gray-600 p-4 rounded-b-3xl shadow-lg text-white">
-        <h1 className="text-2xl font-black">Admin Control</h1>
-        <p className="text-sm opacity-90 mt-1">Live Database Management</p>
+    <div className="min-h-screen bg-gray-100 pb-20 md:pb-0 font-sans">
+      
+      {/* Header - Desktop optimized */}
+      <div className="bg-gray-900 text-white p-4 md:p-6 shadow-md flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-black">Admin Control Center</h1>
+          <p className="text-sm text-gray-400 mt-1">Full Database Management for Perforacare SFA</p>
+        </div>
+        <div className="hidden md:flex gap-4 text-sm font-bold">
+          <div className="bg-gray-800 px-4 py-2 rounded-lg">SKUs: {skus.length}</div>
+          <div className="bg-gray-800 px-4 py-2 rounded-lg">Distributors: {distributors.length}</div>
+          <div className="bg-gray-800 px-4 py-2 rounded-lg">Stores: {stores.length}</div>
+        </div>
       </div>
 
-      <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
+      {/* Main Container - Full width on Desktop */}
+      <div className="max-w-7xl mx-auto p-4 md:p-6 flex flex-col md:flex-row gap-6">
         
-        {/* Mini Dashboard */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100 text-center">
-            <p className="text-[10px] font-bold text-gray-500">SKUs</p>
-            <p className="text-lg font-black text-gray-800">{skus.length}</p>
-          </div>
-          <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100 text-center">
-            <p className="text-[10px] font-bold text-gray-500">Distributors</p>
-            <p className="text-lg font-black text-gray-800">{distributors.length}</p>
-          </div>
-          <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100 text-center">
-            <p className="text-[10px] font-bold text-gray-500">Stores</p>
-            <p className="text-lg font-black text-gray-800">{stores.length}</p>
+        {/* Sidebar Navigation */}
+        <div className="w-full md:w-64 flex-shrink-0">
+          <div className="flex md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0">
+            <button onClick={() => setActiveTab("stores")} className={"px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "stores" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-50')}>🏪 Store Management</button>
+            <button onClick={() => setActiveTab("distributors")} className={"px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "distributors" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-50')}>🏢 Distributors & Users</button>
+            <button onClick={() => setActiveTab("skus")} className={"px-4 py-3 rounded-xl text-sm font-bold text-left transition-colors " + (activeTab === "skus" ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-50')}>📦 SKU Master</button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          <button onClick={() => setActiveTab("distributors")} className={"px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm border transition-colors " + (activeTab === "distributors" ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200')}>🏢 Distributors & Users</button>
-          <button onClick={() => setActiveTab("skus")} className={"px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm border transition-colors " + (activeTab === "skus" ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200')}>📦 SKUs</button>
+        {/* Content Area */}
+        <div className="flex-1">
+          
+          {/* ================= STORES TAB ================= */}
+          {activeTab === "stores" && (
+            <div className="space-y-6">
+              {/* Form */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">{editingStore ? "Edit Store" : "Add New Store"}</h2>
+                <form onSubmit={handleSaveStore} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">Store Name *</label>
+                    <input required type="text" value={storeForm.name} onChange={e => setStoreForm({...storeForm, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">Owner Name</label>
+                    <input type="text" value={storeForm.owner} onChange={e => setStoreForm({...storeForm, owner: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">Distributor *</label>
+                    <select required value={storeForm.distributor_id} onChange={e => setStoreForm({...storeForm, distributor_id: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50">
+                      <option value="">Select Distributor...</option>
+                      {distributors.map(d => <option key={d.id} value={d.id}>{d.name} ({d.id})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">Assigned SO Email</label>
+                    <input type="email" value={storeForm.SO_email} onChange={e => setStoreForm({...storeForm, SO_email: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" placeholder="user@perforacare.com" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">Status</label>
+                    <select value={storeForm.status} onChange={e => setStoreForm({...storeForm, status: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50">
+                      <option value="Active">Active</option>
+                      <option value="Closed">Closed / Dead</option>
+                    </select>
+                  </div>
+                  
+                  <div className="md:col-span-2 flex gap-2 mt-2">
+                    <button type="submit" className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-sm">{editingStore ? "Update Store" : "Save Store"}</button>
+                    {editingStore && <button type="button" onClick={() => { setEditingStore(null); setStoreForm({ id: "", name: "", owner: "", distributor_id: "", SO_email: "", status: "Active" }); }} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg">Cancel</button>}
+                  </div>
+                </form>
+              </div>
+
+              {/* Table */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                  <h2 className="text-lg font-bold text-gray-800">Store List ({filteredStores.length})</h2>
+                  <input type="text" placeholder="Search by store name, ID, or SO email..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="p-2 border rounded-lg text-sm w-64" />
+                </div>
+                <div className="overflow-x-auto max-h-[600px]">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                      <tr>
+                        <th className="p-3">Store Name</th>
+                        <th className="p-3">Distributor</th>
+                        <th className="p-3">SO Email</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredStores.map(s => (
+                        <tr key={s.id} className="hover:bg-gray-50">
+                          <td className="p-3">
+                            <p className="font-bold text-gray-800">{s.name}</p>
+                            <p className="text-[10px] text-gray-400">{s.id}</p>
+                          </td>
+                          <td className="p-3 text-gray-600">{s.distributor_id}</td>
+                          <td className="p-3 text-gray-600 text-xs">{s.SO_email || "-"}</td>
+                          <td className="p-3">
+                            <span className={"px-2 py-1 rounded text-[10px] font-bold " + (s.status === "Closed" ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
+                              {s.status || "Active"}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right space-x-2">
+                            <button onClick={() => handleEditStore(s)} className="text-blue-600 font-bold text-xs hover:underline">Edit</button>
+                            <button onClick={() => handleDeleteStore(s.id)} className="text-red-600 font-bold text-xs hover:underline">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= DISTRIBUTORS TAB ================= */}
+          {activeTab === "distributors" && (
+             <div className="space-y-6">
+             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+               <h2 className="text-lg font-bold text-gray-800 mb-4">{editingDist ? "Edit Distributor" : "Add Distributor / Map User"}</h2>
+               <form onSubmit={handleSaveDist} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                   <label className="text-xs font-bold text-gray-500">Distributor ID *</label>
+                   <input required type="text" value={distForm.id} onChange={e => setDistForm({...distForm, id: e.target.value})} disabled={!!editingDist} className="w-full p-2 border rounded-lg mt-1 bg-gray-50 disabled:opacity-50" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-gray-500">Distributor Name *</label>
+                   <input required type="text" value={distForm.name} onChange={e => setDistForm({...distForm, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-gray-500">City</label>
+                   <input type="text" value={distForm.city} onChange={e => setDistForm({...distForm, city: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                 </div>
+                 <div>
+                   <label className="text-xs font-bold text-gray-500">Mapped SO Emails (Comma separated)</label>
+                   <input type="text" value={distForm.so_emails} onChange={e => setDistForm({...distForm, so_emails: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" placeholder="user1@perfora.com, user2@..." />
+                 </div>
+                 <div className="md:col-span-2 flex gap-2 mt-2">
+                    <button type="submit" className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-sm">{editingDist ? "Update Distributor" : "Save Distributor"}</button>
+                    {editingDist && <button type="button" onClick={() => { setEditingDist(null); setDistForm({ id: "", name: "", city: "", so_emails: "" }); }} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg">Cancel</button>}
+                  </div>
+               </form>
+             </div>
+
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+               <div className="p-4 border-b bg-gray-50"><h2 className="text-lg font-bold text-gray-800">Distributor List ({distributors.length})</h2></div>
+               <div className="overflow-x-auto max-h-[600px]">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                     <tr>
+                       <th className="p-3">Distributor</th>
+                       <th className="p-3">City</th>
+                       <th className="p-3">Mapped SOs</th>
+                       <th className="p-3 text-right">Actions</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {distributors.map(d => (
+                       <tr key={d.id} className="hover:bg-gray-50">
+                         <td className="p-3">
+                           <p className="font-bold text-gray-800">{d.name}</p>
+                           <p className="text-[10px] text-gray-400">{d.id}</p>
+                         </td>
+                         <td className="p-3 text-gray-600">{d.city || "-"}</td>
+                         <td className="p-3 text-blue-600 text-xs font-bold">{d.mapped_SO_emails?.join(", ") || "Unmapped"}</td>
+                         <td className="p-3 text-right space-x-2">
+                            <button onClick={() => handleEditDist(d)} className="text-blue-600 font-bold text-xs hover:underline">Edit</button>
+                            <button onClick={() => handleDeleteDist(d.id)} className="text-red-600 font-bold text-xs hover:underline">Delete</button>
+                          </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+             </div>
+           </div>
+          )}
+
+          {/* ================= SKUs TAB ================= */}
+          {activeTab === "skus" && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">{editingSku ? "Edit SKU" : "Add New SKU"}</h2>
+                <form onSubmit={handleSaveSku} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">SKU Code *</label>
+                    <input required type="text" value={skuForm.sku} onChange={e => setSkuForm({...skuForm, sku: e.target.value})} disabled={!!editingSku} className="w-full p-2 border rounded-lg mt-1 bg-gray-50 disabled:opacity-50" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-bold text-gray-500">Product Name *</label>
+                    <input required type="text" value={skuForm.name} onChange={e => setSkuForm({...skuForm, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">MRP (₹) *</label>
+                    <input required type="number" value={skuForm.mrp} onChange={e => setSkuForm({...skuForm, mrp: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">GST %</label>
+                    <input required type="number" value={skuForm.gst} onChange={e => setSkuForm({...skuForm, gst: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500">Category</label>
+                    <input type="text" value={skuForm.category} onChange={e => setSkuForm({...skuForm, category: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-gray-50" />
+                  </div>
+                  <div className="md:col-span-3 flex items-center gap-4 mt-2">
+                    <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                      <input type="checkbox" checked={skuForm.is_focus} onChange={e => setSkuForm({...skuForm, is_focus: e.target.checked})} className="w-4 h-4 text-blue-600 rounded" />
+                      Mark as Focus Product
+                    </label>
+                    <div className="flex-1 flex gap-2 justify-end">
+                      <button type="submit" className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg shadow-sm">{editingSku ? "Update SKU" : "Save SKU"}</button>
+                      {editingSku && <button type="button" onClick={() => { setEditingSku(null); setSkuForm({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false }); }} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg">Cancel</button>}
+                    </div>
+                  </div>
+                </form>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 border-b bg-gray-50"><h2 className="text-lg font-bold text-gray-800">SKU List ({skus.length})</h2></div>
+                <div className="overflow-x-auto max-h-[600px]">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                      <tr>
+                        <th className="p-3">SKU</th>
+                        <th className="p-3">Name</th>
+                        <th className="p-3">MRP</th>
+                        <th className="p-3">GST</th>
+                        <th className="p-3">Category</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {skus.map(s => (
+                        <tr key={s.id} className="hover:bg-gray-50">
+                          <td className="p-3 font-bold text-gray-800">{s.sku}</td>
+                          <td className="p-3 text-gray-600 truncate max-w-[200px]">{s.name}</td>
+                          <td className="p-3 font-bold">₹{s.mrp}</td>
+                          <td className="p-3 text-gray-500">{s.gst}%</td>
+                          <td className="p-3 text-gray-500">{s.category}</td>
+                          <td className="p-3 text-right space-x-2">
+                            <button onClick={() => handleEditSku(s)} className="text-blue-600 font-bold text-xs hover:underline">Edit</button>
+                            <button onClick={() => handleDeleteSku(s.id)} className="text-red-600 font-bold text-xs hover:underline">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
-
-        {/* DISTRIBUTORS TAB */}
-        {activeTab === "distributors" && (
-          <>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-              <h2 className="text-sm font-bold text-gray-800 mb-1">{editingDist ? "Edit Distributor" : "Add New Distributor / Map User"}</h2>
-              <p className="text-[10px] text-gray-500 mb-3">To transfer a distributor to another SO, just remove the old email and add the new one below.</p>
-              
-              <form onSubmit={handleSaveDist} className="space-y-3">
-                <div className="flex gap-2">
-                  <input required type="text" placeholder="Dist ID (e.g. D01)" value={distForm.id} onChange={e => setDistForm({...distForm, id: e.target.value})} disabled={!!editingDist} className="w-1/3 p-2 border rounded-lg bg-gray-50 text-sm disabled:opacity-50" />
-                  <input required type="text" placeholder="Distributor Name" value={distForm.name} onChange={e => setDistForm({...distForm, name: e.target.value})} className="w-2/3 p-2 border rounded-lg bg-gray-50 text-sm" />
-                </div>
-                <input type="text" placeholder="City (Optional)" value={distForm.city} onChange={e => setDistForm({...distForm, city: e.target.value})} className="w-full p-2 border rounded-lg bg-gray-50 text-sm" />
-                
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500">Mapped SO Emails (comma separated)</label>
-                  <input type="text" placeholder="user1@perforacare.com, user2@..." value={distForm.so_emails} onChange={e => setDistForm({...distForm, so_emails: e.target.value})} className="w-full p-2 border rounded-lg bg-gray-50 text-sm mt-1" />
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button type="submit" className="flex-1 bg-gray-800 text-white font-bold py-2 rounded-lg text-sm">{editingDist ? "Update Distributor" : "Save Distributor"}</button>
-                  {editingDist && <button type="button" onClick={() => { setEditingDist(null); setDistForm({ id: "", name: "", city: "", so_emails: "" }); }} className="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm">Cancel</button>}
-                </div>
-              </form>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <h2 className="text-sm font-bold text-gray-800 p-4 border-b">Distributor Master List</h2>
-              <div className="max-h-[400px] overflow-y-auto">
-                {loading ? <p className="p-4 text-center text-sm text-gray-500">Loading...</p> : 
-                distributors.map(d => (
-                  <div key={d.id} className="flex justify-between items-center p-3 border-b border-gray-50 text-sm">
-                    <div className="min-w-0 pr-2">
-                      <p className="font-bold text-gray-800">{d.name} <span className="text-[10px] text-gray-400">({d.id})</span></p>
-                      <p className="text-[10px] text-gray-500 truncate">{d.city || "No City"}</p>
-                      <p className="text-[10px] text-purple-600 font-bold break-all mt-1">SO: {d.mapped_SO_emails?.join(", ") || "No SO Mapped"}</p>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <button onClick={() => handleEditDist(d)} className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[10px] font-bold">Edit</button>
-                      <button onClick={() => handleDeleteDist(d.id)} className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* SKUs TAB */}
-        {activeTab === "skus" && (
-          <>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-              <h2 className="text-sm font-bold text-gray-800 mb-3">{editingSku ? "Edit SKU" : "Add New SKU"}</h2>
-              <form onSubmit={handleSaveSku} className="space-y-3">
-                <input required type="text" placeholder="SKU Code" value={skuForm.sku} onChange={e => setSkuForm({...skuForm, sku: e.target.value})} disabled={!!editingSku} className="w-full p-2 border rounded-lg bg-gray-50 text-sm disabled:opacity-50" />
-                <input required type="text" placeholder="Product Name" value={skuForm.name} onChange={e => setSkuForm({...skuForm, name: e.target.value})} className="w-full p-2 border rounded-lg bg-gray-50 text-sm" />
-                <div className="flex gap-2">
-                  <input required type="number" placeholder="MRP (₹)" value={skuForm.mrp} onChange={e => setSkuForm({...skuForm, mrp: e.target.value})} className="w-1/2 p-2 border rounded-lg bg-gray-50 text-sm" />
-                  <input required type="number" placeholder="GST %" value={skuForm.gst} onChange={e => setSkuForm({...skuForm, gst: e.target.value})} className="w-1/2 p-2 border rounded-lg bg-gray-50 text-sm" />
-                </div>
-                <input type="text" placeholder="Category" value={skuForm.category} onChange={e => setSkuForm({...skuForm, category: e.target.value})} className="w-full p-2 border rounded-lg bg-gray-50 text-sm" />
-                <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
-                  <input type="checkbox" checked={skuForm.is_focus} onChange={e => setSkuForm({...skuForm, is_focus: e.target.checked})} className="w-4 h-4 text-purple-600 rounded" />
-                  <span>Mark as Focus Product?</span>
-                </label>
-                <div className="flex gap-2">
-                  <button type="submit" className="flex-1 bg-gray-800 text-white font-bold py-2 rounded-lg text-sm">{editingSku ? "Update SKU" : "Save SKU"}</button>
-                  {editingSku && <button type="button" onClick={() => { setEditingSku(null); setSkuForm({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false }); }} className="bg-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm">Cancel</button>}
-                </div>
-              </form>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <h2 className="text-sm font-bold text-gray-800 p-4 border-b">Master SKU List ({skus.length})</h2>
-              <div className="max-h-[400px] overflow-y-auto">
-                {loading ? <p className="p-4 text-center text-sm text-gray-500">Loading...</p> : 
-                skus.map(s => (
-                  <div key={s.id} className="flex justify-between items-center p-3 border-b border-gray-50 text-sm">
-                    <div className="min-w-0 pr-2">
-                      <p className="font-bold text-gray-800">{s.sku}</p>
-                      <p className="text-xs text-gray-500 truncate w-48">{s.name}</p>
-                      <p className="text-[10px] text-gray-400">MRP: ₹{s.mrp} | GST: {s.gst}%</p>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <button onClick={() => handleEditSku(s)} className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-[10px] font-bold">Edit</button>
-                      <button onClick={() => handleDeleteSku(s.id)} className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">Del</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
       </div>
-      <BottomNav />
+      
+      {/* Keep BottomNav for mobile viewing, but hide it on desktop screens */}
+      <div className="md:hidden">
+        <BottomNav />
+      </div>
     </div>
   );
 }
