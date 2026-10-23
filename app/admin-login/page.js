@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { auth } from "../lib/firebase";
+import { auth } from "../lib/firebase"; // Correct path!
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
@@ -14,7 +14,7 @@ export default function AdminLogin() {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      router.push("/admin");
+      router.push("/admin"); // Sends them to the admin dashboard after login
     } catch (error) {
       alert("Login failed: " + error.message);
     }
