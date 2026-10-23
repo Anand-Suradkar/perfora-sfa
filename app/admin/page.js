@@ -86,9 +86,13 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    if (auth.currentUser?.email !== "anand@perforacare.com") {
+ useEffect(() => {
+    const currentEmail = auth.currentUser?.email;
+    
+    // Allow both the official email and your personal Gmail for testing
+    if (currentEmail !== "anand@perforacare.com" && currentEmail !== "anandsuradkar9@gmail.com") {
       router.push("/dashboard");
+      return;
     }
     fetchData();
   }, [router]);

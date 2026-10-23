@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { auth } from "../lib/firebase"; // Correct path!
+import { auth, db } from "../lib/firebase"; 
 import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 
 export default function AdminLogin() {
@@ -13,8 +14,16 @@ export default function AdminLogin() {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push("/admin"); // Sends them to the admin dashboard after login
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Save user to Firestore so they appear in the Users list
+      await setDoc(doc(db, "users", userCredential.user.email), {
+        email: userCredential.user.email,
+        name: userCredential.user.email.split('@')[0],
+        role: "Admin" // Since they are logging in via Admin portal
+      }, { merge: true });
+
+      router.push("/admin");
     } catch (error) {
       alert("Login failed: " + error.message);
     }
