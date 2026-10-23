@@ -71,6 +71,8 @@ export default function AdminPage() {
               soEmail: soEmail,
               sku: i.sku,
               skuName: i.skuName,
+              category: i.category || "General",
+              gst: i.gst || 0,
               mrp: i.mrp,
               qty: i.qty,
               scheme: i.extraScheme,
@@ -133,8 +135,10 @@ export default function AdminPage() {
   };
 
   const exportClaims = () => {
-    const headers = ["Date", "Invoice No", "Distributor", "SO Email", "Store", "SKU", "SKU Name", "MRP", "Qty", "Scheme %", "Claim Amount"];
-    const data = filteredClaims.map(c => [c.date, c.invoiceNo, c.distName, c.soEmail, c.store, c.sku, c.skuName, c.mrp, c.qty, c.scheme, c.claimAmount]);
+    const headers = ["Date", "Invoice No", "Distributor", "SO Email", "Store", "SKU", "SKU Name", "Category", "GST %", "MRP", "Qty", "Scheme %", "Claim Amount"];
+    const data = filteredClaims.map(c => [
+      c.date, c.invoiceNo, c.distName, c.soEmail, c.store, c.sku, c.skuName, c.category, c.gst, c.mrp, c.qty, c.scheme, c.claimAmount
+    ]);
     const csv = Papa.unparse({ fields: headers, data });
     
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
