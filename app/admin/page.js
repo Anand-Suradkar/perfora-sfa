@@ -15,20 +15,17 @@ export default function AdminPage() {
   const [distFilter, setDistFilter] = useState("ALL");
   const [soFilter, setSoFilter] = useState("ALL");
 
-  // --- DATA STATES ---
   const [skus, setSkus] = useState([]);
   const [distributors, setDistributors] = useState([]);
   const [stores, setStores] = useState([]);
   const [users, setUsers] = useState([]);
   const [claims, setClaims] = useState([]);
 
-  // --- MODAL STATES ---
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [showDistModal, setShowDistModal] = useState(false);
   const [showSkuModal, setShowSkuModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
 
-  // --- FORM STATES ---
   const [storeForm, setStoreForm] = useState({ id: "", name: "", owner: "", distributor_id: "", SO_email: "", status: "Active" });
   const [distForm, setDistForm] = useState({ id: "", name: "", city: "", so_emails: "" });
   const [skuForm, setSkuForm] = useState({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false, img: "" });
@@ -158,7 +155,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#F3F4F6] font-sans pb-20 md:pb-0">
-      
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-black text-gray-800 tracking-tight">Perfora Admin</h1>
@@ -175,7 +171,6 @@ export default function AdminPage() {
       </div>
 
       <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row min-h-[calc(100vh-73px)]">
-        
         <div className="w-full md:w-64 bg-white border-r border-gray-200 p-4 space-y-1">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Menu</p>
           <button onClick={() => setActiveTab("overview")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "overview" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>📊 Overview</button>
@@ -187,7 +182,6 @@ export default function AdminPage() {
         </div>
 
         <div className="flex-1 p-6 overflow-hidden">
-          
           {activeTab === "overview" && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -377,7 +371,6 @@ export default function AdminPage() {
               </div>
             </div>
           )}
-
         </div>
       </div>
 

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { auth, db } from "../lib/firebase";
-import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
 import BottomNav from "../components/BottomNav";
@@ -15,7 +14,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Filters State
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterDist, setFilterDist] = useState("ALL");
   const [filterSO, setFilterSO] = useState("ALL");
@@ -131,7 +129,6 @@ export default function DashboardPage() {
     return created.toISOString().slice(0, 7) === currentMonth;
   }).length;
 
-  const targetMTD = 500000; 
   const catTotalValue = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
   const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
 
