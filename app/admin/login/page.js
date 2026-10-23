@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import { auth } from "../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -24,9 +25,25 @@ export default function AdminLogin() {
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm">
         <h1 className="text-2xl font-black text-center mb-6">Admin Login</h1>
         <form onSubmit={handleLogin} className="space-y-4">
-          <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-3 border rounded-xl" required />
-          <input type="password" placeholder="Password" value={password} onChange={setPassword ? (e) => setPassword(e.target.value) : null} className="w-full p-3 border rounded-xl" required />
-          <button type="submit" className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl">Login</button>
+          <input 
+            type="email" 
+            placeholder="Email" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            className="w-full p-3 border rounded-xl" 
+            required 
+          />
+          <input 
+            type="password" 
+            placeholder="Password" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            className="w-full p-3 border rounded-xl" 
+            required 
+          />
+          <button type="submit" className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl">
+            Login
+          </button>
         </form>
       </div>
     </div>

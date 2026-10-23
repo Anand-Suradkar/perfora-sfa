@@ -34,7 +34,6 @@ export default function AdminPage() {
   const [skuForm, setSkuForm] = useState({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false, img: "" });
   const [userForm, setUserForm] = useState({ email: "", name: "", role: "SO" });
 
-  // Dynamic Greeting
   const hr = new Date().getHours();
   const greeting = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
   const adminName = auth.currentUser?.displayName || "Admin";
@@ -55,7 +54,6 @@ export default function AdminPage() {
       const userSnap = await getDocs(collection(db, "users"));
       setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      // Fetch Claims from Orders
       const orderSnap = await getDocs(collection(db, "orders"));
       let allClaims = [];
       orderSnap.docs.forEach(d => {
@@ -98,7 +96,6 @@ export default function AdminPage() {
     fetchData();
   }, [router]);
 
-  // ================= SAVE HANDLERS =================
   const saveStore = async (e) => {
     e.preventDefault();
     const storeId = storeForm.id || "STR-" + Date.now();
@@ -134,7 +131,6 @@ export default function AdminPage() {
     fetchData();
   };
 
-  // ================= EXPORT CLAIMS =================
   const exportClaims = () => {
     const headers = ["Date", "Invoice No", "Distributor", "SO Email", "Store", "SKU", "SKU Name", "MRP", "Qty", "Scheme %", "Claim Amount"];
     const data = filteredClaims.map(c => [c.date, c.invoiceNo, c.distName, c.soEmail, c.store, c.sku, c.skuName, c.mrp, c.qty, c.scheme, c.claimAmount]);
@@ -148,7 +144,6 @@ export default function AdminPage() {
     link.click();
   };
 
-  // Filtering logic
   const filteredStores = stores.filter(s => {
     const matchSearch = s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || s.id?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchDist = distFilter === "ALL" || s.distributor_id === distFilter;
@@ -164,7 +159,6 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#F3F4F6] font-sans pb-20 md:pb-0">
       
-      {/* Top Navigation Bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-black text-gray-800 tracking-tight">Perfora Admin</h1>
@@ -172,7 +166,7 @@ export default function AdminPage() {
         <div className="flex items-center gap-4">
           <div className="text-right hidden md:block">
             <p className="text-sm font-bold text-gray-800">{greeting}, {adminName.split(' ')[0]}!</p>
-            <p className="text-xs text-gray-500">Wed, 22 Oct 2026</p>
+            <p className="text-xs text-gray-500">{new Date().toDateString()}</p>
           </div>
           <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center font-bold text-gray-700">
             AD
@@ -182,7 +176,6 @@ export default function AdminPage() {
 
       <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row min-h-[calc(100vh-73px)]">
         
-        {/* Sidebar */}
         <div className="w-full md:w-64 bg-white border-r border-gray-200 p-4 space-y-1">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Menu</p>
           <button onClick={() => setActiveTab("overview")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "overview" ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50')}>📊 Overview</button>
@@ -193,40 +186,25 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab("claims")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "claims" ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50')}>💰 Claims</button>
         </div>
 
-        {/* Main Content */}
         <div className="flex-1 p-6 overflow-hidden">
           
-          {/* OVERVIEW TAB */}
           {activeTab === "overview" && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-5 rounded-2xl shadow-sm text-white">
-                  <p className="text-sm font-bold opacity-80">Total Stores</p>
-                  <h2 className="text-3xl font-black mt-2">{stores.length}</h2>
-                </div>
-                <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-5 rounded-2xl shadow-sm text-white">
-                  <p className="text-sm font-bold opacity-80">Total SKUs</p>
-                  <h2 className="text-3xl font-black mt-2">{skus.length}</h2>
-                </div>
-                <div className="bg-gradient-to-br from-green-500 to-green-600 p-5 rounded-2xl shadow-sm text-white">
-                  <p className="text-sm font-bold opacity-80">Distributors</p>
-                  <h2 className="text-3xl font-black mt-2">{distributors.length}</h2>
-                </div>
-                <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 rounded-2xl shadow-sm text-white">
-                  <p className="text-sm font-bold opacity-80">Total Claims</p>
-                  <h2 className="text-3xl font-black mt-2">₹{claims.reduce((a,c) => a + c.claimAmount, 0).toFixed(0)}</h2>
-                </div>
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-5 rounded-2xl shadow-sm text-white"><p className="text-sm font-bold opacity-80">Total Stores</p><h2 className="text-3xl font-black mt-2">{stores.length}</h2></div>
+                <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-5 rounded-2xl shadow-sm text-white"><p className="text-sm font-bold opacity-80">Total SKUs</p><h2 className="text-3xl font-black mt-2">{skus.length}</h2></div>
+                <div className="bg-gradient-to-br from-green-500 to-green-600 p-5 rounded-2xl shadow-sm text-white"><p className="text-sm font-bold opacity-80">Distributors</p><h2 className="text-3xl font-black mt-2">{distributors.length}</h2></div>
+                <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-5 rounded-2xl shadow-sm text-white"><p className="text-sm font-bold opacity-80">Total Claims</p><h2 className="text-3xl font-black mt-2">₹{claims.reduce((a,c) => a + c.claimAmount, 0).toFixed(0)}</h2></div>
               </div>
               <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                 <h2 className="text-lg font-bold text-gray-800 mb-4">Quick Actions</h2>
                 <div className="flex gap-4">
-                  <button onClick={() => { setActiveTab("claims"); exportClaims(); }} className="bg-orange-100 text-orange-700 font-bold px-6 py-3 rounded-xl hover:bg-orange-200">⬇ Export Claims Data</button>
+                  <button onClick={() => { setActiveTab("claims"); setTimeout(exportClaims, 500); }} className="bg-orange-100 text-orange-700 font-bold px-6 py-3 rounded-xl hover:bg-orange-200">⬇ Export All Claims Data</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* STORES TAB */}
           {activeTab === "stores" && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
@@ -264,7 +242,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* CLAIMS TAB */}
           {activeTab === "claims" && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
@@ -312,7 +289,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ================= USERS TAB ================= */}
           {activeTab === "users" && (
              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
@@ -342,7 +318,6 @@ export default function AdminPage() {
              </div>
           )}
 
-          {/* ================= DISTRIBUTORS TAB ================= */}
           {activeTab === "distributors" && (
              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                <div className="p-4 border-b flex justify-between items-center bg-gray-50">
@@ -372,7 +347,6 @@ export default function AdminPage() {
              </div>
           )}
 
-          {/* ================= SKU TAB ================= */}
           {activeTab === "skus" && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
@@ -407,9 +381,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* ================= MODALS ================= */}
-      
-      {/* Store Modal */}
       {showStoreModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -435,7 +406,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Distributor Modal */}
       {showDistModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -454,7 +424,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* SKU Modal */}
       {showSkuModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
@@ -480,7 +449,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* User Modal */}
       {showUserModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
