@@ -16,6 +16,9 @@ function OrderTakingForm() {
   
   const [selectedDist, setSelectedDist] = useState("");
   const [selectedStore, setSelectedStore] = useState("");
+  const [storeSearch, setStoreSearch] = useState(""); // New Search State
+  const [showStoreList, setShowStoreList] = useState(false);
+  
   const [activeCategory, setActiveCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]);
@@ -26,7 +29,10 @@ function OrderTakingForm() {
     
     const urlStoreId = searchParams.get("storeId");
     const urlDistId = searchParams.get("distId");
-    if (urlStoreId) setSelectedStore(urlStoreId);
+    if (urlStoreId) {
+      setSelectedStore(urlStoreId);
+      setShowStoreList(false);
+    }
     if (urlDistId) setSelectedDist(urlDistId);
   }, [searchParams]);
 
@@ -49,14 +55,34 @@ function OrderTakingForm() {
     fetchData();
   }, []);
 
+  // Update selected store when URL changes
   useEffect(() => {
     if (selectedStore && stores.length > 0) {
       const storeObj = stores.find(s => s.id === selectedStore);
-      if (storeObj && storeObj.distributor_id) setSelectedDist(storeObj.distributor_id);
+      if (storeObj) {
+        setSelectedDist(storeObj.distributor_id);
+        setStoreSearch(storeObj.name); // Populate the search box
+      }
     }
   }, [selectedStore, stores]);
 
-  const filteredStores = stores.filter(s => s.distributor_id === selectedDist);
+  const handleDistChange = (e) => {
+    setSelectedDist(e.target.value);
+    setSelectedStore("");
+    setStoreSearch("");
+  };
+
+  const filteredStores = stores.filter(s => 
+    s.distributor_id === selectedDist && 
+    s.name.toLowerCase().includes(storeSearch.toLowerCase())
+  );
+
+  const handleSelectStore = (store) => {
+    setSelectedStore(store.id);
+    setStoreSearch(store.name);
+    setShowStoreList(false);
+  };
+
   const categories = ["All", ...new Set(skus.map(s => s.category || "General"))];
 
   const filteredSkus = skus.filter(s => {
@@ -102,18 +128,38 @@ function OrderTakingForm() {
           <div>
             <label className="text-[10px] font-bold text-gray-500 block">DISTRIBUTOR</label>
             <select className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium mt-1"
-              value={selectedDist} onChange={(e) => { setSelectedDist(e.target.value); setSelectedStore(""); }}>
+              value={selectedDist} onChange={handleDistChange}>
               <option value="">Select Distributor...</option>
               {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 block">STORE</label>
-            <select className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium mt-1"
-              value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} disabled={!selectedDist}>
-              <option value="">Select Store...</option>
-              {filteredStores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+          
+          <div className="relative">
+            <label className="text-[10px] font-bold text-gray-500 block">STORE (SEARCH)</label>
+            <input 
+              type="text" 
+              className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium mt-1"
+              placeholder={selectedDist ? "Type to search store..." : "Select Distributor First"}
+              value={storeSearch}
+              onChange={(e) => { setStoreSearch(e.target.value); setSelectedStore(""); setShowStoreList(true); }}
+              onFocus={() => setShowStoreList(true)}
+              disabled={!selectedDist}
+            />
+            
+            {/* Search Results Dropdown */}
+            {showStoreList && storeSearch && selectedDist && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                {filteredStores.length === 0 ? (
+                  <div className="p-3 text-xs text-gray-500">No stores found.</div>
+                ) : (
+                  filteredStores.map(s => (
+                    <div key={s.id} onClick={() => handleSelectStore(s)} className="p-3 text-sm font-bold text-gray-800 border-b border-gray-50 hover:bg-blue-50 cursor-pointer">
+                      {s.name} <span className="text-[10px] text-gray-400 font-normal">({s.city})</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -136,14 +182,11 @@ function OrderTakingForm() {
 
           <div className="space-y-3">
             {filteredSkus.map(sku => {
-              // DYNAMIC EX-GST CALCULATION
               const gstRate = Number(sku.gst) || 0;
               const exGstRate = (Number(sku.mrp) * (100 - 25) / 100) / (1 + gstRate / 100);
 
               return (
               <div key={sku.sku} className="flex items-center gap-3 border border-gray-100 p-2 rounded-xl">
-                
-                {/* IMAGE LOGIC: Tries to load sku.img, if missing shows a box */}
                 <div className="w-14 h-14 bg-gray-50 rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0 border border-gray-100">
                   {sku.img ? (
                     <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
