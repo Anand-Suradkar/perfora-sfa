@@ -27,7 +27,6 @@ export default function BottomNav() {
     { name: "Claim", path: "/claim", icon: "💰" },
   ];
 
-  // Only show Admin tab if the user is anand@perforacare.com
   if (isAdmin) {
     navItems.push({ name: "Admin", path: "/admin", icon: "⚙️" });
   }
@@ -42,11 +41,11 @@ export default function BottomNav() {
               key={item.name}
               href={item.path}
               className={`flex flex-col items-center justify-center min-w-[60px] h-full space-y-1 ${
-                isActive ? "text-purple-600" : "text-gray-400 hover:text-purple-400"
+                isActive ? "text-[#2A6080]" : "text-gray-400 hover:text-gray-600"
               }`}
             >
               <span className="text-xl">{item.icon}</span>
-              <span className={`text-[9px] font-bold ${isActive ? "text-purple-600" : "text-gray-500"}`}>
+              <span className={`text-[9px] font-bold ${isActive ? "text-[#2A6080]" : "text-gray-500"}`}>
                 {item.name}
               </span>
             </Link>

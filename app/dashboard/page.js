@@ -24,7 +24,6 @@ export default function DashboardPage() {
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) { router.push("/"); return; }
 
-      // AUTO-REGISTER USER IN DATABASE
       try {
         await setDoc(doc(db, "users", u.email), {
           email: u.email,
@@ -68,7 +67,7 @@ export default function DashboardPage() {
     return () => unsubscribe();
   }, [router]);
 
-  if (loading || !user) return <div className="p-10 text-center font-bold text-blue-600">Loading Dashboard...</div>;
+  if (loading || !user) return <div className="p-10 text-center font-bold text-[#2A6080]">Loading Dashboard...</div>;
 
   const hr = new Date().getHours();
   const greeting = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
@@ -133,8 +132,9 @@ export default function DashboardPage() {
   const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div className="min-h-screen bg-[#f8f5ff] pb-20">
-      <div className="bg-gradient-to-r from-blue-800 to-blue-600 p-4 rounded-b-3xl shadow-lg text-white">
+    <div className="min-h-screen pb-20">
+      {/* HEADER - Blumine Gradient */}
+      <div className="bg-gradient-to-r from-[#2A6080] to-[#1E455C] p-4 rounded-b-3xl shadow-lg text-white">
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-2xl font-black">Dashboard</h1>
@@ -143,12 +143,13 @@ export default function DashboardPage() {
           </div>
           <div className="flex gap-2">
             <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">🔔</div>
-            <div className="w-8 h-8 bg-white text-blue-800 rounded-full flex items-center justify-center font-bold">AS</div>
+            <div className="w-8 h-8 bg-white text-[#2A6080] rounded-full flex items-center justify-center font-bold">AS</div>
           </div>
         </div>
       </div>
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
+        {/* FILTERS */}
         <div className="bg-white p-4 rounded-3xl shadow-md border border-gray-100">
           <h3 className="text-sm font-bold text-gray-800 mb-3">Dashboard filters</h3>
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -179,41 +180,43 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* KPI CARDS */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-blue-100 p-4 rounded-3xl shadow-sm border border-blue-200 text-blue-900">
+          <div className="bg-[#2A6080] p-4 rounded-3xl shadow-sm text-white">
             <p className="text-xs font-bold flex items-center gap-1">📍 FTD Calls</p>
             <h2 className="text-3xl font-black mt-1">{ftdCalls}</h2>
           </div>
-          <div className="bg-purple-100 p-4 rounded-3xl shadow-sm border border-purple-200 text-purple-900">
+          <div className="bg-[#F5E8C8] p-4 rounded-3xl shadow-sm border border-[#e6d5af] text-gray-800">
             <p className="text-xs font-bold flex items-center gap-1">🗓️ MTD Calls</p>
             <h2 className="text-3xl font-black mt-1">{mtdCalls}</h2>
           </div>
-          <div className="bg-orange-100 p-4 rounded-3xl shadow-sm border border-orange-200 text-orange-900">
+          <div className="bg-[#E05C1A] p-4 rounded-3xl shadow-sm text-white">
             <p className="text-xs font-bold flex items-center gap-1">🎯 FTD Sec</p>
             <h2 className="text-2xl font-black mt-1">₹{ftdSec.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h2>
           </div>
-          <div className="bg-teal-100 p-4 rounded-3xl shadow-sm border border-teal-200 text-teal-900">
+          <div className="bg-[#F5C840] p-4 rounded-3xl shadow-sm text-gray-900">
             <p className="text-xs font-bold flex items-center gap-1">📈 MTD Sec</p>
             <h2 className="text-2xl font-black mt-1">₹{mtdSec.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h2>
           </div>
-          <div className="bg-green-100 p-4 rounded-3xl shadow-sm border border-green-200 text-green-900 flex flex-col justify-between">
+          <div className="bg-[#8BC44A] p-4 rounded-3xl shadow-sm text-white flex flex-col justify-between">
             <div>
               <p className="text-xs font-bold flex items-center gap-1">✅ Productive</p>
               <h2 className="text-3xl font-black mt-1">{productiveCalls}</h2>
             </div>
           </div>
-          <div className="bg-green-50 p-4 rounded-3xl shadow-sm border border-green-100 text-green-900 flex flex-col justify-between">
+          <div className="bg-[#F5E8C8] p-4 rounded-3xl shadow-sm border border-[#e6d5af] text-gray-800 flex flex-col justify-between">
             <div>
               <p className="text-xs font-bold flex items-center gap-1">🔢 Avg LPC</p>
               <h2 className="text-3xl font-black mt-1">{lpc}</h2>
             </div>
           </div>
-          <div className="bg-pink-100 p-4 rounded-3xl shadow-sm border border-pink-200 text-pink-900 col-span-2">
+          <div className="bg-[#E05C1A] p-4 rounded-3xl shadow-sm text-white col-span-2">
             <p className="text-xs font-bold flex items-center gap-1">🏬 New stores</p>
             <h2 className="text-3xl font-black mt-1">{newStoresCount}</h2>
           </div>
         </div>
 
+        {/* CATEGORY TABLE */}
         <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mt-4">
           <h3 className="text-sm font-bold text-gray-800 mb-2">Category-wise contribution</h3>
           <div className="w-full text-xs">
@@ -234,13 +237,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* TOP 10 STORES */}
         <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
           <h3 className="text-sm font-bold text-gray-800 mb-3">Top 10 stores</h3>
           {topStores.length === 0 ? <p className="text-xs text-gray-400">No orders yet.</p> : 
             topStores.map(([storeName, total], index) => (
               <div key={storeName} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${index === 0 ? 'bg-blue-600' : index === 1 ? 'bg-green-500' : index === 2 ? 'bg-orange-500' : index === 3 ? 'bg-red-500' : index === 4 ? 'bg-purple-600' : 'bg-gray-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${index === 0 ? 'bg-[#E05C1A]' : index === 1 ? 'bg-[#F5C840] text-gray-900' : index === 2 ? 'bg-[#8BC44A]' : index === 3 ? 'bg-[#2A6080]' : 'bg-gray-400'}`}>
                     {index + 1}
                   </div>
                   <p className="text-xs font-bold text-gray-900">{storeName}</p>
