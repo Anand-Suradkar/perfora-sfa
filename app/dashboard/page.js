@@ -30,9 +30,7 @@ export default function DashboardPage() {
           name: u.displayName || u.email.split('@')[0],
           role: u.email === "anand@perforacare.com" ? "Admin" : "SO"
         }, { merge: true });
-      } catch (e) {
-        console.error("Error saving user", e);
-      }
+      } catch (e) {}
 
       setUser(u);
 
@@ -42,14 +40,13 @@ export default function DashboardPage() {
         const distSnap = await getDocs(collection(db, "distributors"));
         setDistributors(distSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
+        // FIX #1: Fetch all users for the dropdown to ensure no one is missing
+        const usersSnap = await getDocs(collection(db, "users"));
+        setSoList(usersSnap.docs.map(u => u.data()));
+
         const orderQ = isAdmin ? query(collection(db, "orders")) : query(collection(db, "orders"), where("SO_email", "==", u.email));
         const orderSnap = await getDocs(orderQ);
-        const fetchedOrders = orderSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setOrders(fetchedOrders);
-
-        const uniqueSOs = new Set();
-        fetchedOrders.forEach(o => { if(o.SO_email) uniqueSOs.add(o.SO_email); });
-        setSoList([...uniqueSOs]);
+        setOrders(orderSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
         const visitQ = isAdmin ? query(collection(db, "visits")) : query(collection(db, "visits"), where("SO_email", "==", u.email));
         const visitSnap = await getDocs(visitQ);
@@ -59,9 +56,7 @@ export default function DashboardPage() {
         const storeSnap = await getDocs(storeQ);
         setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      }
+      } catch (error) {}
       setLoading(false);
     });
     return () => unsubscribe();
@@ -76,6 +71,9 @@ export default function DashboardPage() {
   const currentMonth = filterDate.slice(0, 7);
   let ftdCalls = 0, mtdCalls = 0, ftdSec = 0, mtdSec = 0, productiveCalls = 0;
   let totalQty = 0, totalSkus = 0;
+  let ftdNewStores = 0, mtdNewStores = 0;
+  let focusFtdQty = 0, focusMtdQty = 0; // For Tracking specific category (e.g. Toothpaste)
+  
   const storeTotals = {};
   const categoryTotals = {};
 
@@ -99,6 +97,12 @@ export default function DashboardPage() {
       totalQty += item.qty;
       const cat = item.category || "Other";
       categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(item.net || 0);
+      
+      // Track specific Category Qty (e.g., Toothpaste)
+      if (cat.toLowerCase().includes("toothpaste")) {
+        if (orderDate === filterDate) focusFtdQty += item.qty;
+        focusMtdQty += item.qty;
+      }
     });
     storeTotals[order.storeName || order.store_id] = (storeTotals[order.storeName || order.store_id] || 0) + orderValue;
   });
@@ -120,20 +124,26 @@ export default function DashboardPage() {
   const lpc = mtdCalls > 0 ? (totalSkus / mtdCalls).toFixed(1) : 0;
   const topStores = Object.entries(storeTotals).sort((a, b) => b[1] - a[1]).slice(0, 10);
   
-  const newStoresCount = stores.filter(s => {
-    if (!s.createdAt) return false;
-    if (filterDist !== "ALL" && s.distributor_id !== filterDist) return false;
-    if (filterSO !== "ALL" && s.SO_email !== filterSO) return false;
+  stores.forEach(s => {
+    if (!s.createdAt) return;
+    if (filterDist !== "ALL" && s.distributor_id !== filterDist) return;
+    if (filterSO !== "ALL" && s.SO_email !== filterSO) return;
+    
     const created = s.createdAt.toMillis ? new Date(s.createdAt.toMillis()) : new Date(s.createdAt);
-    return created.toISOString().slice(0, 7) === currentMonth;
-  }).length;
+    if (created.toISOString().slice(0, 7) === currentMonth) {
+      mtdNewStores++;
+      if (created.toISOString().split('T')[0] === filterDate) ftdNewStores++;
+    }
+  });
 
   const catTotalValue = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
   const sortedCats = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
 
+  // Colors for Top 10
+  const topColors = ['bg-[#E05C1A]', 'bg-[#F5C840] text-gray-900', 'bg-[#8BC44A]', 'bg-[#2A6080]', 'bg-purple-600', 'bg-pink-500', 'bg-teal-500', 'bg-indigo-500', 'bg-red-400', 'bg-gray-400'];
+
   return (
     <div className="min-h-screen pb-20">
-      {/* HEADER - Blumine Gradient */}
       <div className="bg-gradient-to-r from-[#2A6080] to-[#1E455C] p-4 rounded-b-3xl shadow-lg text-white">
         <div className="flex justify-between items-start">
           <div>
@@ -149,7 +159,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
-        {/* FILTERS */}
         <div className="bg-white p-4 rounded-3xl shadow-md border border-gray-100">
           <h3 className="text-sm font-bold text-gray-800 mb-3">Dashboard filters</h3>
           <div className="grid grid-cols-2 gap-3 mb-3">
@@ -157,7 +166,7 @@ export default function DashboardPage() {
               <label className="text-[10px] font-bold text-gray-500 mb-1 block">SALES PERSON</label>
               <select className="w-full p-2 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium" value={filterSO} onChange={(e) => setFilterSO(e.target.value)}>
                 <option value="ALL">Whole team</option>
-                {soList.map(so => <option key={so} value={so}>{so.split('@')[0]}</option>)}
+                {soList.map(so => <option key={so.email} value={so.email}>{so.name || so.email.split('@')[0]}</option>)}
               </select>
             </div>
             <div>
@@ -198,25 +207,51 @@ export default function DashboardPage() {
             <p className="text-xs font-bold flex items-center gap-1">📈 MTD Sec</p>
             <h2 className="text-2xl font-black mt-1">₹{mtdSec.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h2>
           </div>
-          <div className="bg-[#8BC44A] p-4 rounded-3xl shadow-sm text-white flex flex-col justify-between">
+        </div>
+
+        {/* FIX #2 & #3: Productive/LPC Combined + New Stores Moved Up */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#8BC44A] p-4 rounded-3xl shadow-sm text-white col-span-2 flex justify-between items-center">
             <div>
               <p className="text-xs font-bold flex items-center gap-1">✅ Productive</p>
               <h2 className="text-3xl font-black mt-1">{productiveCalls}</h2>
             </div>
-          </div>
-          <div className="bg-[#F5E8C8] p-4 rounded-3xl shadow-sm border border-[#e6d5af] text-gray-800 flex flex-col justify-between">
-            <div>
+            <div className="border-l border-white/30 pl-4 h-full flex flex-col justify-center">
               <p className="text-xs font-bold flex items-center gap-1">🔢 Avg LPC</p>
               <h2 className="text-3xl font-black mt-1">{lpc}</h2>
             </div>
           </div>
-          <div className="bg-[#E05C1A] p-4 rounded-3xl shadow-sm text-white col-span-2">
-            <p className="text-xs font-bold flex items-center gap-1">🏬 New stores</p>
-            <h2 className="text-3xl font-black mt-1">{newStoresCount}</h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+           <div className="bg-[#E05C1A] p-4 rounded-3xl shadow-sm text-white col-span-2 flex justify-between items-center">
+            <div>
+              <p className="text-xs font-bold flex items-center gap-1">🏬 New Stores (FTD)</p>
+              <h2 className="text-2xl font-black mt-1">{ftdNewStores}</h2>
+            </div>
+            <div className="border-l border-white/30 pl-6 h-full flex flex-col justify-center">
+              <p className="text-xs font-bold flex items-center gap-1">🏬 New Stores (MTD)</p>
+              <h2 className="text-2xl font-black mt-1">{mtdNewStores}</h2>
+            </div>
           </div>
         </div>
 
-        {/* CATEGORY TABLE */}
+        {/* FIX #3: Specific Category Tracking (like Purple Toothpaste) */}
+        <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+          <h3 className="text-sm font-bold text-gray-800">Toothpaste Performance</h3>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+             <div className="bg-[#F5E8C8] p-3 rounded-xl border border-[#e6d5af]">
+                <p className="text-[10px] font-bold text-gray-600">FTD Qty Sold</p>
+                <p className="text-lg font-black text-gray-900">{focusFtdQty}</p>
+             </div>
+             <div className="bg-[#F5E8C8] p-3 rounded-xl border border-[#e6d5af]">
+                <p className="text-[10px] font-bold text-gray-600">MTD Qty Sold</p>
+                <p className="text-lg font-black text-gray-900">{focusMtdQty}</p>
+             </div>
+          </div>
+        </div>
+
+        {/* Category Table */}
         <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 mt-4">
           <h3 className="text-sm font-bold text-gray-800 mb-2">Category-wise contribution</h3>
           <div className="w-full text-xs">
@@ -237,14 +272,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* TOP 10 STORES */}
+        {/* FIX #4: Top 10 Stores All Colored */}
         <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
           <h3 className="text-sm font-bold text-gray-800 mb-3">Top 10 stores</h3>
           {topStores.length === 0 ? <p className="text-xs text-gray-400">No orders yet.</p> : 
             topStores.map(([storeName, total], index) => (
               <div key={storeName} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-0">
                 <div className="flex items-center gap-2">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${index === 0 ? 'bg-[#E05C1A]' : index === 1 ? 'bg-[#F5C840] text-gray-900' : index === 2 ? 'bg-[#8BC44A]' : index === 3 ? 'bg-[#2A6080]' : 'bg-gray-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${topColors[index]}`}>
                     {index + 1}
                   </div>
                   <p className="text-xs font-bold text-gray-900">{storeName}</p>
