@@ -16,7 +16,7 @@ function OrderTakingForm() {
   
   const [selectedDist, setSelectedDist] = useState("");
   const [selectedStore, setSelectedStore] = useState("");
-  const [storeSearch, setStoreSearch] = useState(""); // New Search State
+  const [storeSearch, setStoreSearch] = useState("");
   const [showStoreList, setShowStoreList] = useState(false);
   
   const [activeCategory, setActiveCategory] = useState("All");
@@ -55,13 +55,12 @@ function OrderTakingForm() {
     fetchData();
   }, []);
 
-  // Update selected store when URL changes
   useEffect(() => {
     if (selectedStore && stores.length > 0) {
       const storeObj = stores.find(s => s.id === selectedStore);
       if (storeObj) {
         setSelectedDist(storeObj.distributor_id);
-        setStoreSearch(storeObj.name); // Populate the search box
+        setStoreSearch(storeObj.name);
       }
     }
   }, [selectedStore, stores]);
@@ -117,8 +116,8 @@ function OrderTakingForm() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f5ff] pb-32">
-      <div className="bg-gradient-to-r from-blue-800 to-blue-600 p-4 rounded-b-3xl shadow-lg text-white">
+    <div className="min-h-screen bg-[#F5E8C8] pb-32">
+      <div className="bg-gradient-to-r from-[#2A6080] to-[#1E455C] p-4 rounded-b-3xl shadow-lg text-white">
         <h1 className="text-2xl font-black">Order taking</h1>
         <p className="text-sm opacity-90 mt-1">Distributor → outlet → SKU</p>
       </div>
@@ -146,14 +145,13 @@ function OrderTakingForm() {
               disabled={!selectedDist}
             />
             
-            {/* Search Results Dropdown */}
             {showStoreList && storeSearch && selectedDist && (
               <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                 {filteredStores.length === 0 ? (
                   <div className="p-3 text-xs text-gray-500">No stores found.</div>
                 ) : (
                   filteredStores.map(s => (
-                    <div key={s.id} onClick={() => handleSelectStore(s)} className="p-3 text-sm font-bold text-gray-800 border-b border-gray-50 hover:bg-blue-50 cursor-pointer">
+                    <div key={s.id} onClick={() => handleSelectStore(s)} className="p-3 text-sm font-bold text-gray-800 border-b border-gray-50 hover:bg-[#F5E8C8] cursor-pointer">
                       {s.name} <span className="text-[10px] text-gray-400 font-normal">({s.city})</span>
                     </div>
                   ))
@@ -166,7 +164,7 @@ function OrderTakingForm() {
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-bold text-gray-800">Product catalogue</h3>
-            <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{filteredSkus.length} SKUs</span>
+            <span className="text-[10px] font-bold bg-[#F5E8C8] text-[#2A6080] px-2 py-1 rounded-full">{filteredSkus.length} SKUs</span>
           </div>
           
           <input type="text" placeholder="Search SKU / Product Name" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm mb-3" value={search} onChange={e => setSearch(e.target.value)} />
@@ -174,37 +172,42 @@ function OrderTakingForm() {
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mb-3">
             {categories.map(cat => (
               <button key={cat} onClick={() => setActiveCategory(cat)} 
-                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border ${activeCategory === cat ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border ${activeCategory === cat ? 'bg-[#2A6080] text-white border-[#2A6080]' : 'bg-white text-gray-600 border-gray-200'}`}>
                 {cat}
               </button>
             ))}
           </div>
 
-          <div className="space-y-3">
+          <p className="text-[10px] text-gray-400 font-bold mb-2 flex justify-between">Swipe left/right to browse <span>↔</span></p>
+
+          {/* HORIZONTAL SWIPEABLE CATALOGUE */}
+          <div className="flex overflow-x-auto gap-3 pb-4 snap-x scrollbar-hide">
             {filteredSkus.map(sku => {
               const gstRate = Number(sku.gst) || 0;
               const exGstRate = (Number(sku.mrp) * (100 - 25) / 100) / (1 + gstRate / 100);
 
               return (
-              <div key={sku.sku} className="flex items-center gap-3 border border-gray-100 p-2 rounded-xl">
-                <div className="w-14 h-14 bg-gray-50 rounded-lg flex items-center justify-center text-xl overflow-hidden flex-shrink-0 border border-gray-100">
-                  {sku.img ? (
-                    <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
-                  ) : null}
-                  <span className={sku.img ? "hidden" : "block"}>📦</span>
+              <div key={sku.sku} className="min-w-[85%] snap-center flex flex-col gap-2 border border-gray-100 p-3 rounded-xl bg-gray-50">
+                <div className="flex justify-between items-start">
+                  <div className="w-14 h-14 bg-white rounded-lg flex items-center justify-center text-xl overflow-hidden shrink-0 border border-gray-200">
+                    {sku.img ? (
+                      <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                    ) : null}
+                    <span className={sku.img ? "hidden" : "block"}>📦</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-lg border border-gray-200">
+                    <button onClick={() => updateQty(sku.sku, -1)} className="w-6 h-6 rounded font-bold text-gray-600">−</button>
+                    <span className="text-sm font-black w-4 text-center">{getCartQty(sku.sku)}</span>
+                    <button onClick={() => updateQty(sku.sku, 1)} className="w-6 h-6 rounded font-bold text-[#2A6080]">+</button>
+                  </div>
                 </div>
                 
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-bold text-purple-600">{sku.sku}</p>
+                <div className="min-w-0 mt-1">
+                  <p className="text-[10px] font-bold text-[#E05C1A]">{sku.sku}</p>
                   <p className="text-xs font-black text-gray-800 leading-tight truncate">{sku.name}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">
+                  <p className="text-[10px] text-gray-500 mt-1">
                     MRP ₹{sku.mrp} <span className="text-gray-400">Rate ex-GST ₹{exGstRate.toFixed(2)}</span>
                   </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => updateQty(sku.sku, -1)} className="w-7 h-7 bg-gray-100 rounded-full font-bold">−</button>
-                  <span className="text-sm font-black w-4 text-center">{getCartQty(sku.sku)}</span>
-                  <button onClick={() => updateQty(sku.sku, 1)} className="w-7 h-7 bg-blue-100 text-blue-700 rounded-full font-bold">+</button>
                 </div>
               </div>
             )})}
@@ -214,12 +217,12 @@ function OrderTakingForm() {
 
       {cart.length > 0 && (
         <div className="fixed bottom-16 w-full max-w-md left-1/2 -translate-x-1/2 bg-white border-t border-gray-200 p-3 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-40">
-          <div className="flex justify-between items-center bg-blue-50 p-2 rounded-xl">
+          <div className="flex justify-between items-center bg-[#F5E8C8] p-2 rounded-xl border border-[#e6d5af]">
             <div>
               <p className="text-[10px] font-bold text-gray-500">Cart • {cart.length} SKU • {cart.reduce((a, b) => a + b.qty, 0)} units</p>
-              <p className="text-sm font-black text-gray-900">Ready to Review</p>
+              <p className="text-sm font-black text-[#2A6080]">Ready to Review</p>
             </div>
-            <button onClick={proceedToCart} className="bg-blue-600 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-md">
+            <button onClick={proceedToCart} className="bg-[#2A6080] text-white font-bold text-xs px-4 py-2 rounded-lg shadow-md">
               View cart →
             </button>
           </div>

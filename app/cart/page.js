@@ -16,7 +16,7 @@ function CartContent() {
   const [context, setContext] = useState({ distId: "", storeId: "" });
   const [storeName, setStoreName] = useState("");
   const [distName, setDistName] = useState("");
-  const [soName, setSoName] = useState(""); // New SO Name
+  const [soName, setSoName] = useState("");
   const [scheme, setScheme] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -181,7 +181,7 @@ function CartContent() {
   };
 
   return (
-    <div className="min-h-screen pb-32">
+    <div className="min-h-screen bg-[#F5E8C8] pb-32">
       <div className="bg-gradient-to-r from-[#2A6080] to-[#1E455C] p-4 rounded-b-3xl shadow-lg text-white">
         <h1 className="text-2xl font-black">Order cart</h1>
         <p className="text-sm opacity-90 mt-1">Review selected SKUs before submission</p>
@@ -189,7 +189,6 @@ function CartContent() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
         
-        {/* FIX #6: Header Details */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
           <div>
             <h3 className="font-bold text-gray-900 text-lg">{storeName || "No outlet selected"}</h3>
@@ -200,7 +199,6 @@ function CartContent() {
           </button>
         </div>
 
-        {/* FIX #5: Swipeable Cart Items */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-sm font-bold text-gray-800">Added items</h3>
@@ -209,14 +207,14 @@ function CartContent() {
             </span>
           </div>
 
-          {/* Horizontal Scroll Container */}
-          <div className="flex overflow-x-auto gap-3 pb-4 snap-x scrollbar-hide">
+          {/* VERTICAL LIST (Reverted) */}
+          <div className="space-y-3">
             {cart.map(item => {
               const sku = skus.find(s => s.sku === item.sku);
               const calc = calculateLineData(item.sku, item.qty, scheme);
               if (!sku) return null;
               return (
-                <div key={item.sku} className="min-w-[85%] snap-center flex gap-3 p-3 border border-gray-100 rounded-xl bg-gray-50 relative">
+                <div key={item.sku} className="flex items-center gap-3 p-3 border border-gray-100 rounded-xl bg-gray-50 relative">
                   <div className="w-14 h-14 bg-white rounded-lg flex items-center justify-center text-xl overflow-hidden shrink-0 border border-gray-200">
                     {sku.img ? <img src={sku.img} className="w-full h-full object-contain p-1" /> : "📦"}
                   </div>
@@ -229,9 +227,9 @@ function CartContent() {
                       <button onClick={() => updateQty(item.sku, 1)} className="w-6 h-6 bg-white border border-gray-200 rounded text-xs font-bold">+</button>
                     </div>
                   </div>
-                  <div className="text-right flex flex-col justify-between">
+                  <div className="text-right flex flex-col justify-between h-full">
                     <p className="text-sm font-black text-gray-900">₹{calc.net.toFixed(2)}</p>
-                    <button onClick={() => updateQty(item.sku, -item.qty)} className="text-[10px] font-bold text-[#E05C1A]">Remove</button>
+                    <button onClick={() => updateQty(item.sku, -item.qty)} className="text-[10px] font-bold text-[#E05C1A] mt-2">Remove</button>
                   </div>
                 </div>
               );
@@ -239,12 +237,12 @@ function CartContent() {
           </div>
         </div>
 
-        <div className="bg-[#F5E8C8] p-4 rounded-2xl shadow-sm border border-[#e6d5af]">
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
           <div className="flex justify-between items-center">
             <h3 className="text-xs font-bold text-gray-800">Market scheme (%)</h3>
           </div>
-          <input type="number" min="0" max="10" value={scheme} onChange={e => setScheme(Number(e.target.value))} className="w-full mt-2 p-2 border border-[#e6d5af] rounded-xl font-black text-center text-lg bg-white" />
-          <p className="text-[10px] text-gray-700 mt-2">
+          <input type="number" min="0" max="10" value={scheme} onChange={e => setScheme(Number(e.target.value))} className="w-full mt-2 p-2 border border-gray-200 rounded-xl font-black text-center text-lg bg-gray-50" />
+          <p className="text-[10px] text-gray-500 mt-2">
             Billing discount: <b>{calculateLineData(cart[0]?.sku, 1, scheme).billingPct}%</b> ({scheme}% market scheme).
           </p>
         </div>
