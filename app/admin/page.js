@@ -15,17 +15,20 @@ export default function AdminPage() {
   const [distFilter, setDistFilter] = useState("ALL");
   const [soFilter, setSoFilter] = useState("ALL");
 
+  // --- DATA STATES ---
   const [skus, setSkus] = useState([]);
   const [distributors, setDistributors] = useState([]);
   const [stores, setStores] = useState([]);
   const [users, setUsers] = useState([]);
   const [claims, setClaims] = useState([]);
 
+  // --- MODAL STATES ---
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [showDistModal, setShowDistModal] = useState(false);
   const [showSkuModal, setShowSkuModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
 
+  // --- FORM STATES ---
   const [storeForm, setStoreForm] = useState({ id: "", name: "", owner: "", distributor_id: "", SO_email: "", status: "Active" });
   const [distForm, setDistForm] = useState({ id: "", name: "", city: "", so_emails: "" });
   const [skuForm, setSkuForm] = useState({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false, img: "" });
@@ -71,7 +74,7 @@ export default function AdminPage() {
         });
       });
       setClaims(allClaims.sort((a,b) => new Date(b.date) - new Date(a.date)));
-    } catch (error) {}
+    } catch (error) { console.error(error); }
     setLoading(false);
   };
 
@@ -146,6 +149,8 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-[#F5E8C8] font-sans pb-20 md:pb-0">
+      
+      {/* Top Navigation */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-40">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-black text-[#2A6080] tracking-tight">Perfora Admin</h1>
@@ -160,6 +165,8 @@ export default function AdminPage() {
       </div>
 
       <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row min-h-[calc(100vh-73px)]">
+        
+        {/* Sidebar */}
         <div className="w-full md:w-64 bg-white border-r border-gray-200 p-4 space-y-1">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 px-2">Menu</p>
           <button onClick={() => setActiveTab("overview")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "overview" ? 'bg-[#2A6080] text-white' : 'text-gray-600 hover:bg-gray-50')}>📊 Overview</button>
@@ -170,8 +177,10 @@ export default function AdminPage() {
           <button onClick={() => setActiveTab("claims")} className={"w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all " + (activeTab === "claims" ? 'bg-[#E05C1A] text-white' : 'text-gray-600 hover:bg-gray-50')}>💰 Claims</button>
         </div>
 
+        {/* Content Area */}
         <div className="flex-1 p-6 overflow-hidden">
           
+          {/* ================= OVERVIEW TAB ================= */}
           {activeTab === "overview" && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -189,7 +198,7 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ... Other tabs follow the same color pattern in their headers/tables ... */}
+          {/* ================= STORES TAB ================= */}
           {activeTab === "stores" && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
@@ -227,16 +236,156 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ... (Other tabs like Users, Distributors, SKUs, Claims follow the same UI structure as before, just with updated colors) ... */}
-          {/* (Please copy the rest of the tabs from the previous Admin code block, just changing 'bg-blue-600' to 'bg-[#2A6080]' and 'bg-red-600' to 'bg-[#E05C1A]' if you want to match exactly) */}
-          
+          {/* ================= DISTRIBUTORS TAB ================= */}
+          {activeTab === "distributors" && (
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                 <h2 className="text-lg font-bold text-[#2A6080]">Distributors ({distributors.length})</h2>
+                 <button onClick={() => { setDistForm({ id: "", name: "", city: "", so_emails: "" }); setShowDistModal(true); }} className="bg-[#2A6080] text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add Distributor</button>
+               </div>
+               <div className="overflow-x-auto max-h-[650px]">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                     <tr><th className="p-3">Distributor</th><th className="p-3">City</th><th className="p-3">Mapped SOs</th><th className="p-3 text-right">Actions</th></tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {distributors.map(d => (
+                       <tr key={d.id} className="hover:bg-gray-50">
+                         <td className="p-3 font-bold text-gray-800">{d.name} <br/><span className="text-[10px] text-gray-400">{d.id}</span></td>
+                         <td className="p-3 text-gray-600">{d.city || "-"}</td>
+                         <td className="p-3 text-[#2A6080] text-xs font-bold">{d.mapped_SO_emails?.join(", ") || "Unmapped"}</td>
+                         <td className="p-3 text-right space-x-2">
+                            <button onClick={() => { setDistForm({ id: d.id, name: d.name, city: d.city || "", so_emails: d.mapped_SO_emails ? d.mapped_SO_emails.join(", ") : "" }); setShowDistModal(true); }} className="text-[#2A6080] font-bold text-xs">Edit</button>
+                            <button onClick={() => deleteItem("distributors", d.id)} className="text-[#E05C1A] font-bold text-xs">Delete</button>
+                          </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+             </div>
+          )}
+
+          {/* ================= USERS TAB ================= */}
+          {activeTab === "users" && (
+             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                 <h2 className="text-lg font-bold text-[#2A6080]">Sales Officers ({users.length})</h2>
+                 <button onClick={() => { setUserForm({ email: "", name: "", role: "SO" }); setShowUserModal(true); }} className="bg-[#2A6080] text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add User</button>
+               </div>
+               <div className="overflow-x-auto max-h-[650px]">
+                 <table className="w-full text-left text-sm">
+                   <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                     <tr><th className="p-3">Email</th><th className="p-3">Name</th><th className="p-3">Role</th><th className="p-3 text-right">Actions</th></tr>
+                   </thead>
+                   <tbody className="divide-y divide-gray-100">
+                     {users.map(u => (
+                       <tr key={u.id} className="hover:bg-gray-50">
+                         <td className="p-3 font-bold text-gray-800">{u.email}</td>
+                         <td className="p-3 text-gray-600">{u.name || "-"}</td>
+                         <td className="p-3"><span className="bg-gray-200 px-2 py-1 rounded text-xs font-bold">{u.role || "SO"}</span></td>
+                         <td className="p-3 text-right space-x-2">
+                            <button onClick={() => { setUserForm(u); setShowUserModal(true); }} className="text-[#2A6080] font-bold text-xs">Edit</button>
+                            <button onClick={() => deleteItem("users", u.id)} className="text-[#E05C1A] font-bold text-xs">Delete</button>
+                          </td>
+                       </tr>
+                     ))}
+                   </tbody>
+                 </table>
+               </div>
+             </div>
+          )}
+
+          {/* ================= SKU TAB ================= */}
+          {activeTab === "skus" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                <h2 className="text-lg font-bold text-[#2A6080]">SKU Master ({skus.length})</h2>
+                <button onClick={() => { setSkuForm({ sku: "", name: "", mrp: "", gst: "18", category: "", is_focus: false, img: "" }); setShowSkuModal(true); }} className="bg-[#2A6080] text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm">+ Add SKU</button>
+              </div>
+              <div className="overflow-x-auto max-h-[650px]">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                    <tr><th className="p-3">SKU</th><th className="p-3">Name</th><th className="p-3">MRP</th><th className="p-3">GST</th><th className="p-3">Category</th><th className="p-3 text-right">Actions</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {skus.map(s => (
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-bold text-gray-800">{s.sku}</td>
+                        <td className="p-3 text-gray-600 max-w-[200px] truncate">{s.name}</td>
+                        <td className="p-3 font-bold">₹{s.mrp}</td>
+                        <td className="p-3 text-gray-500">{s.gst}%</td>
+                        <td className="p-3 text-gray-500">{s.category}</td>
+                        <td className="p-3 text-right space-x-2">
+                          <button onClick={() => { setSkuForm(s); setShowSkuModal(true); }} className="text-[#2A6080] font-bold text-xs">Edit</button>
+                          <button onClick={() => deleteItem("sku_master", s.id)} className="text-[#E05C1A] font-bold text-xs">Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ================= CLAIMS TAB ================= */}
+          {activeTab === "claims" && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50">
+                <h2 className="text-lg font-bold text-[#E05C1A]">Claims Dashboard</h2>
+                <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                  <select value={distFilter} onChange={e => setDistFilter(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                    <option value="ALL">All Distributors</option>
+                    {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                  <select value={soFilter} onChange={e => setSoFilter(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                    <option value="ALL">All SOs</option>
+                    {users.filter(u => u.role === "SO").map(u => <option key={u.id} value={u.email}>{u.email}</option>)}
+                  </select>
+                  <button onClick={exportClaims} className="bg-[#8BC44A] text-white font-bold px-4 py-2 rounded-lg text-sm shadow-sm flex items-center gap-2">⬇ Export CSV</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[650px]">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0">
+                    <tr><th className="p-3">Invoice / Date</th><th className="p-3">Distributor / SO</th><th className="p-3">Store</th><th className="p-3">SKU Details</th><th className="p-3">Scheme</th><th className="p-3 text-right">Claim Amount</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredClaims.map((c, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="p-3">
+                          <p className="font-bold text-[#2A6080]">{c.invoiceNo}</p>
+                          <p className="text-[10px] text-gray-500">{c.date}</p>
+                        </td>
+                        <td className="p-3">
+                          <p className="font-bold text-gray-800">{c.distName}</p>
+                          <p className="text-[10px] text-gray-500">{c.soEmail}</p>
+                        </td>
+                        <td className="p-3 font-semibold text-gray-700">{c.store}</td>
+                        <td className="p-3">
+                          <p className="font-bold text-gray-800">{c.sku}</p>
+                          <p className="text-[10px] text-gray-500">{c.skuName} (MRP: ₹{c.mrp})</p>
+                        </td>
+                        <td className="p-3 font-bold text-[#E05C1A]">{c.scheme}% <br/><span className="text-[10px] text-gray-500 font-normal">Qty: {c.qty}</span></td>
+                        <td className="p-3 text-right font-black text-gray-900">₹{c.claimAmount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
+      {/* ================= MODALS ================= */}
+      
+      {/* Store Modal */}
       {showStoreModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold mb-4">Edit Store</h2>
+            <h2 className="text-lg font-bold mb-4">{storeForm.id ? "Edit Store" : "Add New Store"}</h2>
             <form onSubmit={saveStore} className="space-y-3">
               <input required type="text" placeholder="Store Name" value={storeForm.name} onChange={e => setStoreForm({...storeForm, name: e.target.value})} className="w-full p-2 border rounded-lg" />
               <input type="text" placeholder="Owner Name" value={storeForm.owner} onChange={e => setStoreForm({...storeForm, owner: e.target.value})} className="w-full p-2 border rounded-lg" />
@@ -245,10 +394,9 @@ export default function AdminPage() {
                 {distributors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
               
-              {/* FIX #7: Dropdown to change SO */}
               <div>
                   <label className="text-[10px] font-bold text-gray-500">Assign to Sales Officer</label>
-                  <select value={storeForm.SO_email} onChange={e => setStoreForm({...storeForm, SO_email: e.target.value})} className="w-full p-2 border rounded-lg mt-1">
+                  <select value={storeForm.SO_email || ""} onChange={e => setStoreForm({...storeForm, SO_email: e.target.value})} className="w-full p-2 border rounded-lg mt-1">
                     <option value="">Unassigned</option>
                     {users.map(u => <option key={u.id} value={u.email}>{u.name || u.email} ({u.role})</option>)}
                   </select>
@@ -267,8 +415,73 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* ... (Other Modals follow the same pattern) ... */}
+      {/* Distributor Modal */}
+      {showDistModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold mb-4">{distForm.id ? "Edit Distributor" : "Add Distributor"}</h2>
+            <form onSubmit={saveDist} className="space-y-3">
+              <input required type="text" placeholder="Distributor ID (e.g. D01)" value={distForm.id} onChange={e => setDistForm({...distForm, id: e.target.value})} disabled={!!distForm.id} className="w-full p-2 border rounded-lg disabled:bg-gray-100" />
+              <input required type="text" placeholder="Distributor Name" value={distForm.name} onChange={e => setDistForm({...distForm, name: e.target.value})} className="w-full p-2 border rounded-lg" />
+              <input type="text" placeholder="City" value={distForm.city} onChange={e => setDistForm({...distForm, city: e.target.value})} className="w-full p-2 border rounded-lg" />
+              <textarea placeholder="SO Emails (comma separated)" value={distForm.so_emails} onChange={e => setDistForm({...distForm, so_emails: e.target.value})} className="w-full p-2 border rounded-lg" rows="2"></textarea>
+              <div className="flex gap-2 justify-end mt-4">
+                <button type="button" onClick={() => setShowDistModal(false)} className="px-4 py-2 text-gray-600 font-bold">Cancel</button>
+                <button type="submit" className="bg-[#2A6080] text-white px-4 py-2 rounded-lg font-bold">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
+      {/* SKU Modal */}
+      {showSkuModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold mb-4">{skuForm.id ? "Edit SKU" : "Add SKU"}</h2>
+            <form onSubmit={saveSku} className="space-y-3">
+              <input required type="text" placeholder="SKU Code" value={skuForm.sku} onChange={e => setSkuForm({...skuForm, sku: e.target.value})} disabled={!!skuForm.id} className="w-full p-2 border rounded-lg disabled:bg-gray-100" />
+              <input required type="text" placeholder="Product Name" value={skuForm.name} onChange={e => setSkuForm({...skuForm, name: e.target.value})} className="w-full p-2 border rounded-lg" />
+              <div className="flex gap-2">
+                <input required type="number" placeholder="MRP" value={skuForm.mrp} onChange={e => setSkuForm({...skuForm, mrp: e.target.value})} className="w-1/2 p-2 border rounded-lg" />
+                <input required type="number" placeholder="GST%" value={skuForm.gst} onChange={e => setSkuForm({...skuForm, gst: e.target.value})} className="w-1/2 p-2 border rounded-lg" />
+              </div>
+              <input type="text" placeholder="Category" value={skuForm.category} onChange={e => setSkuForm({...skuForm, category: e.target.value})} className="w-full p-2 border rounded-lg" />
+              <input type="text" placeholder="Image Link (https://...)" value={skuForm.img || ""} onChange={e => setSkuForm({...skuForm, img: e.target.value})} className="w-full p-2 border rounded-lg" />
+              <label className="flex items-center gap-2 text-sm font-bold">
+                <input type="checkbox" checked={skuForm.is_focus} onChange={e => setSkuForm({...skuForm, is_focus: e.target.checked})} /> Focus Product
+              </label>
+              <div className="flex gap-2 justify-end mt-4">
+                <button type="button" onClick={() => setShowSkuModal(false)} className="px-4 py-2 text-gray-600 font-bold">Cancel</button>
+                <button type="submit" className="bg-[#2A6080] text-white px-4 py-2 rounded-lg font-bold">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* User Modal */}
+      {showUserModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6">
+            <h2 className="text-lg font-bold mb-4">{userForm.id ? "Edit User" : "Add User"}</h2>
+            <form onSubmit={saveUser} className="space-y-3">
+              <input required type="email" placeholder="Google Email" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} disabled={!!userForm.id} className="w-full p-2 border rounded-lg disabled:bg-gray-100" />
+              <input type="text" placeholder="Full Name" value={userForm.name || ""} onChange={e => setUserForm({...userForm, name: e.target.value})} className="w-full p-2 border rounded-lg" />
+              <select value={userForm.role || "SO"} onChange={e => setUserForm({...userForm, role: e.target.value})} className="w-full p-2 border rounded-lg">
+                <option value="SO">Sales Officer</option>
+                <option value="Admin">Admin</option>
+              </select>
+              <div className="flex gap-2 justify-end mt-4">
+                <button type="button" onClick={() => setShowUserModal(false)} className="px-4 py-2 text-gray-600 font-bold">Cancel</button>
+                <button type="submit" className="bg-[#2A6080] text-white px-4 py-2 rounded-lg font-bold">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Nav */}
       <div className="md:hidden">
         <BottomNav />
       </div>
