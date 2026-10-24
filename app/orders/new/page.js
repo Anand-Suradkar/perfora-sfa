@@ -92,6 +92,12 @@ function OrderTakingForm() {
     return matchesCat && (nameMatch || skuMatch);
   });
 
+  // Chunk the SKUs into groups of 4 for the swipe pages
+  const chunkedSkus = [];
+  for (let i = 0; i < filteredSkus.length; i += 4) {
+    chunkedSkus.push(filteredSkus.slice(i, i + 4));
+  }
+
   const updateQty = (skuId, delta) => {
     let newCart = [...cart];
     const existing = newCart.find(item => item.sku === skuId);
@@ -169,7 +175,6 @@ function OrderTakingForm() {
           
           <input type="text" placeholder="Search SKU / Product Name" className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50 text-sm mb-3" value={search} onChange={e => setSearch(e.target.value)} />
 
-          {/* Category Chips - Horizontally Scrollable */}
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mb-3">
             {categories.map(cat => (
               <button key={cat} onClick={() => setActiveCategory(cat)} 
@@ -179,36 +184,48 @@ function OrderTakingForm() {
             ))}
           </div>
 
-          {/* 2-Column Grid for Products */}
-          <div className="grid grid-cols-2 gap-3 pb-4">
-            {filteredSkus.map(sku => {
-              const gstRate = Number(sku.gst) || 0;
-              const exGstRate = (Number(sku.mrp) * (100 - 25) / 100) / (1 + gstRate / 100);
+          <p className="text-[10px] text-gray-400 font-bold mb-2 flex justify-between">Swipe left/right to browse 4 SKUs at a time <span>↔</span></p>
 
-              return (
-              <div key={sku.sku} className="flex flex-col justify-between border border-gray-100 p-3 rounded-xl bg-gray-50">
-                <div>
-                  <div className="w-full h-24 bg-white rounded-lg flex items-center justify-center text-xl overflow-hidden border border-gray-200 mb-2">
-                    {sku.img ? (
-                      <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-2" loading="lazy" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
-                    ) : null}
-                    <span className={sku.img ? "hidden" : "block"}>📦</span>
-                  </div>
-                  <p className="text-[10px] font-bold text-[#E05C1A]">{sku.sku}</p>
-                  <p className="text-xs font-black text-gray-800 leading-tight line-clamp-2 h-8">{sku.name}</p>
-                  <p className="text-[10px] text-gray-500 mt-1">
-                    MRP ₹{sku.mrp} <br/>
-                    <span className="text-gray-400 text-[9px]">Rate ex-GST ₹{exGstRate.toFixed(2)}</span>
-                  </p>
-                </div>
-                
-                <div className="flex items-center justify-between bg-white px-2 py-1.5 rounded-lg border border-gray-200 mt-2">
-                  <button onClick={() => updateQty(sku.sku, -1)} className="w-6 h-6 rounded font-bold text-gray-600">−</button>
-                  <span className="text-sm font-black text-center">{getCartQty(sku.sku)}</span>
-                  <button onClick={() => updateQty(sku.sku, 1)} className="w-6 h-6 rounded font-bold text-[#2A6080]">+</button>
-                </div>
+          {/* Horizontal Swipe Container for Pages of 4 */}
+          <div className="flex overflow-x-auto snap-x snap-mandatory scrollbar-hide gap-3 pb-2">
+            {chunkedSkus.map((page, pageIndex) => (
+              <div key={pageIndex} className="min-w-full snap-center flex flex-col gap-2">
+                {page.map(sku => {
+                  const gstRate = Number(sku.gst) || 0;
+                  const exGstRate = (Number(sku.mrp) * (100 - 25) / 100) / (1 + gstRate / 100);
+
+                  return (
+                    <div key={sku.sku} className="flex items-center gap-3 p-2 border-b border-gray-100 last:border-0 bg-white">
+                      
+                      {/* Image */}
+                      <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-lg overflow-hidden shrink-0 border border-gray-200">
+                        {sku.img ? (
+                          <img src={sku.img} alt={sku.name} className="w-full h-full object-contain p-1" loading="lazy" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                        ) : null}
+                        <span className={sku.img ? "hidden" : "block"}>📦</span>
+                      </div>
+
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold text-[#E05C1A]">{sku.sku}</p>
+                        <p className="text-[11px] font-black text-gray-800 leading-tight truncate">{sku.name}</p>
+                        <p className="text-[9px] text-gray-500 mt-0.5">
+                          MRP ₹{sku.mrp} <span className="text-gray-400">Rate ex-GST ₹{exGstRate.toFixed(2)}</span>
+                        </p>
+                      </div>
+
+                      {/* Qty Selector */}
+                      <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-1.5 py-1 shrink-0">
+                        <button onClick={() => updateQty(sku.sku, -1)} className="w-5 h-5 flex items-center justify-center text-gray-600 font-bold">−</button>
+                        <span className="text-xs font-black w-4 text-center">{getCartQty(sku.sku)}</span>
+                        <button onClick={() => updateQty(sku.sku, 1)} className="w-5 h-5 flex items-center justify-center text-[#2A6080] font-bold">+</button>
+                      </div>
+
+                    </div>
+                  );
+                })}
               </div>
-            )})}
+            ))}
           </div>
         </div>
       </div>
