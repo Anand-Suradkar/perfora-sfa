@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { auth, db } from "../lib/firebase"; 
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { loadAppUser } from "../lib/access";
 import { useRouter } from "next/navigation";
 
 export default function AdminLogin() {
@@ -14,18 +14,16 @@ export default function AdminLogin() {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Save user to Firestore so they appear in the Users list
-      await setDoc(doc(db, "users", userCredential.user.email), {
-        email: userCredential.user.email,
-        name: userCredential.user.email.split('@')[0],
-        role: "Admin" // Since they are logging in via Admin portal
-      }, { merge: true });
-
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      const profile = await loadAppUser(userCredential.user, db);
+      if (profile.role !== "Admin") {
+        await signOut(auth);
+        throw new Error("This account is not authorized for the Admin Control Center.");
+      }
       router.push("/admin");
     } catch (error) {
-      alert("Login failed: " + error.message);
+      if (auth.currentUser) await signOut(auth).catch(() => {});
+      alert("Login failed: " + (error?.message || "Please check your account."));
     }
   };
 

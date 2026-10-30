@@ -2,17 +2,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { auth } from "../lib/firebase";
+import { auth, db } from "../lib/firebase";
+import { loadAppUser } from "../lib/access";
 
 export default function BottomNav() {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user && user.email === "anand@perforacare.com") {
-        setIsAdmin(true);
-      } else {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!user) { setIsAdmin(false); return; }
+      try {
+        const profile = await loadAppUser(user, db);
+        setIsAdmin(profile.role === "Admin");
+      } catch {
         setIsAdmin(false);
       }
     });

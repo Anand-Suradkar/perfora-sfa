@@ -5,6 +5,9 @@ import { db, auth } from "../lib/firebase";
 import { collection, getDocs, addDoc, doc, getDoc, updateDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { useRouter, useSearchParams } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+import { calculateOrderPricing } from "../lib/pricing.mjs";
+import { loadAppUser } from "../lib/access";
+import { getOrderVisitAction } from "../lib/order-visit.mjs";
 
 function CartContent() {
   const router = useRouter();
@@ -67,33 +70,33 @@ function CartContent() {
     init();
   }, [editId]);
 
-  const calculateLineData = (skuId, qty, extraSchemePercent) => {
-    const skuData = skus.find(s => s.sku === skuId);
-    if (!skuData) return { net: 0, claim: 0, baseExGst: 0, mrpTotal: 0, billingPct: 0 };
-    
-    const mrp = Number(skuData.mrp) || 0;
-    const gst = Number(skuData.gst) || 0;
-    const fixedMarginPct = 25;
-    const fixedRateExGst = (mrp * (100 - fixedMarginPct) / 100) / (1 + gst / 100);
-    const billingDiscountPct = extraSchemePercent > 0 ? Math.floor((extraSchemePercent * 100 / (100 - fixedMarginPct)) * 100 + 1e-8) / 100 : 0;
-    const invoiceBaseExGst = fixedRateExGst * qty;
-    const discountExGst = invoiceBaseExGst * (billingDiscountPct / 100);
-    const taxable = invoiceBaseExGst - discountExGst;
-    const tax = taxable * (gst / 100);
-    const net = taxable + tax;
-    const claim = discountExGst * (1 + gst / 100);
-
-    return { net, claim, baseExGst: invoiceBaseExGst, mrpTotal: mrp * qty, billingPct: billingDiscountPct };
+  const emptyTotals = {
+    qty: 0, mrpTotal: 0, fixedMarginValue: 0, baseExGst: 0,
+    schemeBenefit: 0, schemeBenefitExGst: 0, taxableExGst: 0,
+    tax: 0, invoiceTotal: 0, skuCount: 0, billingPct: 0,
   };
-
-  const totals = cart.reduce((acc, item) => {
-    const calc = calculateLineData(item.sku, item.qty, scheme);
-    acc.mrpTotal += calc.mrpTotal;
-    acc.baseExGst += calc.baseExGst;
-    acc.schemeBenefit += calc.claim;
-    acc.invoiceTotal += calc.net;
-    return acc;
-  }, { mrpTotal: 0, baseExGst: 0, schemeBenefit: 0, invoiceTotal: 0 });
+  let pricing = { lines: [], lineBySku: {}, totals: emptyTotals };
+  let pricingError = "";
+  try {
+    pricing = calculateOrderPricing(cart, skus, scheme);
+  } catch (error) {
+    // A stale cart or SKU-master change should show an actionable error rather than
+    // crash the page during render. Submission is blocked while pricing is invalid.
+    pricingError = error?.message || "The cart could not be calculated.";
+  }
+  const totals = pricing.totals;
+  const calculateLineData = (skuId) => pricing.lineBySku[skuId] || {
+    net: 0,
+    claim: 0,
+    baseExGst: 0,
+    mrpTotal: 0,
+    billingPct: totals.billingPct,
+    taxableExGst: 0,
+    tax: 0,
+    claimExGst: 0,
+    fixedRateExGst: 0,
+    schemeDiscountExGst: 0,
+  };
 
   const updateQty = (skuId, delta) => {
     let newCart = [...cart];
@@ -120,23 +123,84 @@ function CartContent() {
     return encodeURIComponent(text);
   };
 
+  const syncVisitForOrder = async ({ orderId, isDraft, isEdit }) => {
+    if (isDraft) return;
+    const email = String(auth.currentUser?.email || "").trim().toLowerCase();
+    if (!email) throw new Error("Your sign-in session expired. Please sign in again.");
+
+    const visitQ = query(
+      collection(db, "visits"),
+      where("store_id", "==", context.storeId),
+      where("SO_email", "==", email),
+      where("status", "==", "IN_PROGRESS")
+    );
+    const visitSnap = await getDocs(visitQ);
+    const action = getOrderVisitAction({ isDraft, isEdit, hasOpenVisit: !visitSnap.empty });
+
+    if (action === "skip") return;
+    if (action === "complete-existing") {
+      await updateDoc(doc(db, "visits", visitSnap.docs[0].id), {
+        status: "COMPLETED",
+        checkOutTime: serverTimestamp(),
+        noOrderReason: "",
+        updatedAt: serverTimestamp()
+      });
+      return;
+    }
+
+    // Apps Script creates a visit row when an order is submitted without a prior
+    // check-in. Keep that parity, and explicitly mark that GPS was not captured.
+    const visitRef = await addDoc(collection(db, "visits"), {
+      store_id: context.storeId,
+      SO_email: email,
+      checkInTime: serverTimestamp(),
+      status: "IN_PROGRESS",
+      order_id: orderId,
+      source: "ORDER_SUBMISSION",
+      checkInStatus: "No GPS"
+    });
+    await updateDoc(doc(db, "visits", visitRef.id), {
+      status: "COMPLETED",
+      checkOutTime: serverTimestamp(),
+      noOrderReason: "",
+      updatedAt: serverTimestamp()
+    });
+  };
+
   const submitOrder = async (isDraft = false) => {
     if (cart.length === 0) return alert("Cart is empty");
+    if (pricingError) return alert(`Cannot submit this cart: ${pricingError}`);
     if (!context.storeId) return alert("No outlet selected. Go back to catalogue.");
     
     if (!isDraft) setIsSubmitting(true);
 
-    const finalItems = cart.map(item => {
-      const skuData = skus.find(s => s.sku === item.sku);
-      const calc = calculateLineData(item.sku, item.qty, scheme);
-      return {
-        sku: item.sku, skuName: skuData.name, category: skuData.category || "General",
-        gst: skuData.gst || 0, qty: item.qty, extraScheme: scheme, mrp: skuData.mrp,
-        net: Number(calc.net), claim: Number(calc.claim)
-      };
-    });
-
     try {
+      if (!auth.currentUser?.email) throw new Error("Please sign in again before submitting the order.");
+
+      const finalItems = cart.map(item => {
+        const skuData = skus.find(s => s.sku === item.sku || s.id === item.sku);
+        if (!skuData) throw new Error(`SKU ${item.sku} is missing from the SKU master.`);
+        const calc = calculateLineData(item.sku);
+        return {
+          sku: item.sku,
+          skuName: skuData.name,
+          category: skuData.category || "General",
+          gst: calc.gstPercent,
+          qty: item.qty,
+          extraScheme: scheme,
+          mrp: Number(skuData.mrp),
+          fixedRateExGst: calc.fixedRateExGst,
+          billingDiscountPercent: calc.billingDiscountPercent,
+          invoiceBaseExGst: calc.invoiceBaseExGst,
+          schemeDiscountExGst: calc.schemeDiscountExGst,
+          taxableValueExGst: calc.taxableExGst,
+          taxValue: calc.tax,
+          net: calc.net,
+          claim: calc.claim,
+          claimExGst: calc.claimExGst,
+        };
+      });
+
       let finalStoreName = storeName;
       if (!finalStoreName) {
          const sDoc = await getDoc(doc(db, "stores", context.storeId));
@@ -144,29 +208,67 @@ function CartContent() {
       }
 
       const orderData = {
-        SO_email: auth.currentUser.email, 
-        distributor_id: context.distId, 
+        SO_email: auth.currentUser.email.toLowerCase(),
+        distributor_id: context.distId,
         store_id: context.storeId,
         storeName: finalStoreName || "Unknown Store",
-        items: finalItems, 
-        grand_total: totals.invoiceTotal, 
+        items: finalItems,
+        grand_total: totals.invoiceTotal,
         total_claim: totals.schemeBenefit,
-        status: isDraft ? "DRAFT" : "CREATED", 
+        status: isDraft ? "DRAFT" : "CREATED",
         createdAt: serverTimestamp()
       };
 
       if (editId) {
-        await updateDoc(doc(db, "orders", editId), { ...orderData, updatedAt: serverTimestamp() });
+        const profile = await loadAppUser(auth.currentUser, db);
+        const existingSnap = await getDoc(doc(db, "orders", editId));
+        if (!existingSnap.exists()) throw new Error("Order not found. It may have been removed.");
+        const existing = existingSnap.data();
+        const existingStatus = String(existing.status || "").toUpperCase();
+        if (profile.role !== "Admin" && String(existing.SO_email || "").toLowerCase() !== profile.email) {
+          throw new Error("You cannot edit another salesperson's order.");
+        }
+        if (!["CREATED", "SHARED", "ACCEPTED"].includes(existingStatus)) {
+          throw new Error(`Order is ${existingStatus || "in an unknown state"} and can no longer be edited.`);
+        }
+        // Preserve ownership, store/distributor, original status and original creation time.
+        // Only calculated order contents may change during an allowed edit.
+        await updateDoc(doc(db, "orders", editId), {
+          storeName: existing.storeName || finalStoreName || "Unknown Store",
+          items: finalItems,
+          grand_total: totals.invoiceTotal,
+          total_claim: totals.schemeBenefit,
+          status: existing.status,
+          createdAt: existing.createdAt,
+          updatedAt: serverTimestamp()
+        });
+        if (!isDraft) {
+          try {
+            await syncVisitForOrder({ orderId: editId, isDraft, isEdit: true });
+          } catch (visitError) {
+            console.error("Order updated, but visit tracking failed:", visitError);
+            alert("The order was updated, but visit tracking could not be completed. Do not resubmit the order. Please return to Orders and report this visit-tracking issue.");
+            router.push("/orders");
+            setIsSubmitting(false);
+            return;
+          }
+        }
       } else {
-        await addDoc(collection(db, "orders"), orderData);
+        const savedOrderRef = await addDoc(collection(db, "orders"), orderData);
         localStorage.removeItem("perfora_cart");
         localStorage.removeItem("perfora_order_context");
 
         if (!isDraft) {
-          const visitQ = query(collection(db, "visits"), where("store_id", "==", context.storeId), where("SO_email", "==", auth.currentUser.email), where("status", "==", "IN_PROGRESS"));
-          const visitSnap = await getDocs(visitQ);
-          if (!visitSnap.empty) {
-            await updateDoc(doc(db, "visits", visitSnap.docs[0].id), { status: "COMPLETED" });
+          try {
+            await syncVisitForOrder({ orderId: savedOrderRef.id, isDraft, isEdit: false });
+          } catch (visitError) {
+            // The order has already been saved; do not leave the user on the cart where
+            // retrying could create a duplicate order.
+            console.error("Order saved, but visit tracking failed:", visitError);
+            alert("Your order was saved, but visit tracking could not be completed. Do not submit the order again. Please check Orders and report this visit-tracking issue.");
+            router.push("/orders");
+            setIsSubmitting(false);
+            return;
           }
         }
       }
@@ -175,7 +277,8 @@ function CartContent() {
       else router.push("/orders");
       
     } catch (error) {
-      alert("Error saving order");
+      console.error("Order save failed:", error);
+      alert(error?.message || "Error saving order. Please retry after checking the connection.");
     }
     setIsSubmitting(false);
   };
@@ -189,6 +292,12 @@ function CartContent() {
 
       <div className="p-4 space-y-4 max-w-md mx-auto -mt-4">
         
+        {pricingError && (
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-xl text-sm font-semibold">
+            {pricingError} Please return to the catalogue and refresh the SKU selection before submitting.
+          </div>
+        )}
+
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
           <div>
             <h3 className="font-bold text-gray-900 text-lg">{storeName || "No outlet selected"}</h3>
@@ -211,12 +320,18 @@ function CartContent() {
           <div className="space-y-3">
             {cart.map(item => {
               const sku = skus.find(s => s.sku === item.sku);
-              const calc = calculateLineData(item.sku, item.qty, scheme);
+              const calc = calculateLineData(item.sku);
               if (!sku) return null;
               return (
                 <div key={item.sku} className="flex items-center gap-3 p-3 border border-gray-100 rounded-xl bg-gray-50 relative">
                   <div className="w-14 h-14 bg-white rounded-lg flex items-center justify-center text-xl overflow-hidden shrink-0 border border-gray-200">
-                    {sku.img ? <img src={sku.img} className="w-full h-full object-contain p-1" /> : "📦"}
+                    {sku.img ? (
+  <img
+    src={sku.img}
+    alt={sku.name || "Product image"}
+    className="w-full h-full object-contain p-1"
+  />
+) : "📦"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-gray-900 truncate pr-4">{sku.name}</p>
@@ -241,9 +356,12 @@ function CartContent() {
           <div className="flex justify-between items-center">
             <h3 className="text-xs font-bold text-gray-800">Market scheme (%)</h3>
           </div>
-          <input type="number" min="0" max="10" value={scheme} onChange={e => setScheme(Number(e.target.value))} className="w-full mt-2 p-2 border border-gray-200 rounded-xl font-black text-center text-lg bg-gray-50" />
+          <input type="number" min="0" max="10" step="1" value={scheme} onChange={e => {
+            const value = e.target.value === "" ? 0 : Number(e.target.value);
+            setScheme(Number.isFinite(value) ? Math.max(0, Math.min(10, Math.floor(value))) : 0);
+          }} className="w-full mt-2 p-2 border border-gray-200 rounded-xl font-black text-center text-lg bg-gray-50" />
           <p className="text-[10px] text-gray-500 mt-2">
-            Billing discount: <b>{calculateLineData(cart[0]?.sku, 1, scheme).billingPct}%</b> ({scheme}% market scheme).
+            Billing discount: <b>{totals.billingPct}%</b> ({scheme}% market scheme).
           </p>
         </div>
 
@@ -263,13 +381,13 @@ function CartContent() {
       <div className="fixed bottom-16 w-full max-w-md left-1/2 -translate-x-1/2 bg-white p-3 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] z-40 flex flex-col gap-2">
         <div className="flex gap-2">
           <button onClick={() => {
-              const tempOrder = { store_id: context.storeId, distributor_id: context.distId, items: cart.map(i => ({...i, skuName: skus.find(s=>s.sku===i.sku)?.name})), grand_total: totals.invoiceTotal };
+              const tempOrder = { store_id: context.storeId, distributor_id: context.distId, items: cart.map(i => ({...i, skuName: skus.find(s=>s.sku===i.sku)?.name, extraScheme: scheme})), grand_total: totals.invoiceTotal };
               window.open(`https://wa.me/?text=${generateWhatsAppText(tempOrder)}`, '_blank');
             }} 
             className="bg-[#8BC44A] text-white font-bold px-4 rounded-xl shadow-lg flex items-center justify-center shrink-0">
             WA
           </button>
-          <button onClick={() => submitOrder(false)} disabled={isSubmitting} className="flex-1 bg-[#2A6080] text-white font-bold py-3 rounded-xl shadow-lg disabled:opacity-50">
+          <button onClick={() => submitOrder(false)} disabled={isSubmitting || Boolean(pricingError) || cart.length === 0} className="flex-1 bg-[#2A6080] text-white font-bold py-3 rounded-xl shadow-lg disabled:opacity-50">
             {isSubmitting ? "Saving..." : editId ? "Update Order" : "Submit Order"}
           </button>
         </div>

@@ -5,6 +5,7 @@ import { db, auth } from "../lib/firebase";
 import { collection, getDocs, query, where, addDoc, serverTimestamp } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+import { loadAppUser, getAccessibleDistributors } from "../lib/access";
 
 export default function StoresPage() {
   const router = useRouter();
@@ -16,44 +17,39 @@ export default function StoresPage() {
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (!user) return;
-      
+      if (!user) { setLoading(false); return; }
       try {
-        const isAdmin = user.email === "anand@perforacare.com";
-        
-        // Fetch Distributors for names
-        const distSnap = await getDocs(collection(db, "distributors"));
+        const profile = await loadAppUser(user, db);
+        const isAdmin = profile.role === "Admin";
+        const distList = await getAccessibleDistributors(db, profile.email, isAdmin);
         const distMap = {};
-        distSnap.docs.forEach(d => { distMap[d.id] = d.data().name; });
+        distList.forEach(d => { distMap[d.id] = d.name; });
         setDistributors(distMap);
 
-        const storeQ = isAdmin 
-          ? query(collection(db, "stores")) 
-          : query(collection(db, "stores"), where("SO_email", "==", user.email));
+        const storeQ = isAdmin
+          ? query(collection(db, "stores"))
+          : query(collection(db, "stores"), where("SO_email", "==", profile.email));
         const storeSnap = await getDocs(storeQ);
-        setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        
         const visitQ = isAdmin
           ? query(collection(db, "visits"))
-          : query(collection(db, "visits"), where("SO_email", "==", user.email));
+          : query(collection(db, "visits"), where("SO_email", "==", profile.email));
         const visitSnap = await getDocs(visitQ);
-        
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
         const visitMap = {};
-        visitSnap.docs.forEach(doc => {
-          const v = doc.data();
-          if (v.checkInTime?.toDate() >= startOfDay) {
-            visitMap[v.store_id] = { id: doc.id, status: v.status };
-          }
+        visitSnap.docs.forEach(d => {
+          const v = d.data();
+          const visitDate = typeof v.checkInTime?.toDate === "function" ? v.checkInTime.toDate() : null;
+          if (visitDate && visitDate >= startOfDay) visitMap[v.store_id] = { id: d.id, status: v.status };
         });
         setVisits(visitMap);
-
       } catch (error) {
-        console.error(error);
+        console.error("Unable to load store visit data:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);

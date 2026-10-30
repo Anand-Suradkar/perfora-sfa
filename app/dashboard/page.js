@@ -2,67 +2,85 @@
 
 import { useEffect, useState } from "react";
 import { auth, db } from "../lib/firebase";
+import { signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { loadAppUser, getAccessibleDistributors } from "../lib/access";
 import BottomNav from "../components/BottomNav";
+import { dateKeyInTimeZone, todayDateKey, isIncludedInSalesMetrics } from "../lib/dashboard-date.mjs";
 
 export default function DashboardPage() {
   const [user, setUser] = useState(null);
+  const [userRole, setUserRole] = useState(null);
+  const [accessError, setAccessError] = useState("");
   const [orders, setOrders] = useState([]);
   const [visits, setVisits] = useState([]);
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filterDate, setFilterDate] = useState(() => todayDateKey());
   const [filterDist, setFilterDist] = useState("ALL");
   const [filterSO, setFilterSO] = useState("ALL");
   const [distributors, setDistributors] = useState([]);
   const [soList, setSoList] = useState([]);
 
   useEffect(() => {
+    let cancelled = false;
     const unsubscribe = auth.onAuthStateChanged(async (u) => {
       if (!u) { router.push("/"); return; }
 
       try {
-        await setDoc(doc(db, "users", u.email), {
-          email: u.email,
-          name: u.displayName || u.email.split('@')[0],
-          role: u.email === "anand@perforacare.com" ? "Admin" : "SO"
-        }, { merge: true });
-      } catch (e) {}
+        const profile = await loadAppUser(u, db);
+        if (cancelled) return;
+        setUser(u);
+        setUserRole(profile.role);
+        setAccessError("");
 
-      setUser(u);
+        const isAdmin = profile.role === "Admin";
+        const distList = await getAccessibleDistributors(db, profile.email, isAdmin);
+        if (cancelled) return;
+        setDistributors(distList);
 
-      try {
-        const isAdmin = u.email === "anand@perforacare.com";
+        if (isAdmin) {
+          const usersSnap = await getDocs(collection(db, "users"));
+          if (!cancelled) setSoList(usersSnap.docs.map(d => d.data()));
+        } else {
+          setSoList([profile]);
+          setFilterSO("ALL");
+        }
 
-        const distSnap = await getDocs(collection(db, "distributors"));
-        setDistributors(distSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-        // FIX #1: Fetch all users for the dropdown to ensure no one is missing
-        const usersSnap = await getDocs(collection(db, "users"));
-        setSoList(usersSnap.docs.map(u => u.data()));
-
-        const orderQ = isAdmin ? query(collection(db, "orders")) : query(collection(db, "orders"), where("SO_email", "==", u.email));
+        const orderQ = isAdmin
+          ? query(collection(db, "orders"))
+          : query(collection(db, "orders"), where("SO_email", "==", profile.email));
         const orderSnap = await getDocs(orderQ);
-        setOrders(orderSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        if (!cancelled) setOrders(orderSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        const visitQ = isAdmin ? query(collection(db, "visits")) : query(collection(db, "visits"), where("SO_email", "==", u.email));
+        const visitQ = isAdmin
+          ? query(collection(db, "visits"))
+          : query(collection(db, "visits"), where("SO_email", "==", profile.email));
         const visitSnap = await getDocs(visitQ);
-        setVisits(visitSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        if (!cancelled) setVisits(visitSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        const storeQ = isAdmin ? query(collection(db, "stores")) : query(collection(db, "stores"), where("SO_email", "==", u.email));
+        const storeQ = isAdmin
+          ? query(collection(db, "stores"))
+          : query(collection(db, "stores"), where("SO_email", "==", profile.email));
         const storeSnap = await getDocs(storeQ);
-        setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-      } catch (error) {}
-      setLoading(false);
+        if (!cancelled) setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (error) {
+        console.error("Dashboard access/data load failed:", error);
+        if (!cancelled) setAccessError(error?.message || "Unable to load your dashboard.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     });
-    return () => unsubscribe();
+    return () => { cancelled = true; unsubscribe(); };
   }, [router]);
 
-  if (loading || !user) return <div className="p-10 text-center font-bold text-[#2A6080]">Loading Dashboard...</div>;
+  if (loading) return <div className="p-10 text-center font-bold text-[#2A6080]">Loading Dashboard...</div>;
+  if (accessError) return <div className="min-h-screen p-8 flex items-center justify-center"><div className="bg-white max-w-md rounded-2xl p-6 shadow text-center"><h1 className="text-xl font-black text-gray-900">Access not configured</h1><p className="mt-3 text-sm text-gray-600">{accessError}</p><button onClick={() => signOut(auth)} className="mt-5 rounded-xl bg-[#2A6080] px-4 py-2 text-white font-bold">Sign out</button></div></div>;
+  if (!user) return <div className="p-10 text-center font-bold text-[#2A6080]">Loading Dashboard...</div>;
+  const isAdmin = userRole === "Admin";
 
   const hr = new Date().getHours();
   const greeting = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
@@ -78,8 +96,9 @@ export default function DashboardPage() {
   const categoryTotals = {};
 
   const filteredOrders = orders.filter(o => {
-    if (!o.createdAt) return false;
-    const d = new Date(o.createdAt.toMillis()).toISOString().split('T')[0];
+    if (!isIncludedInSalesMetrics(o)) return false;
+    const d = dateKeyInTimeZone(o.createdAt);
+    if (!d) return false;
     const oMonth = d.slice(0, 7);
     if (oMonth !== currentMonth) return false;
     if (filterDist !== "ALL" && o.distributor_id !== filterDist) return false;
@@ -88,7 +107,7 @@ export default function DashboardPage() {
   });
 
   filteredOrders.forEach(order => {
-    const orderDate = new Date(order.createdAt.toMillis()).toISOString().split('T')[0];
+    const orderDate = dateKeyInTimeZone(order.createdAt);
     const orderValue = Number(order.grand_total) || 0;
     if (orderDate === filterDate) ftdSec += orderValue;
     mtdSec += orderValue;
@@ -107,15 +126,21 @@ export default function DashboardPage() {
     storeTotals[order.storeName || order.store_id] = (storeTotals[order.storeName || order.store_id] || 0) + orderValue;
   });
 
+  const storeById = new Map(stores.map(store => [store.id, store]));
   const filteredVisits = visits.filter(v => {
     if (!v.checkInTime) return false;
-    const d = new Date(v.checkInTime.toMillis()).toISOString().split('T')[0];
+    const d = dateKeyInTimeZone(v.checkInTime);
+    if (!d) return false;
     if (filterSO !== "ALL" && v.SO_email !== filterSO) return false;
+    if (filterDist !== "ALL") {
+      const visitDist = v.distributor_id || storeById.get(v.store_id)?.distributor_id;
+      if (visitDist !== filterDist) return false;
+    }
     return d.slice(0, 7) === currentMonth;
   });
 
   filteredVisits.forEach(v => {
-    const visitDate = new Date(v.checkInTime.toMillis()).toISOString().split('T')[0];
+    const visitDate = dateKeyInTimeZone(v.checkInTime);
     if (visitDate === filterDate) ftdCalls++;
     mtdCalls++;
     if (v.status === "COMPLETED") productiveCalls++;
@@ -128,11 +153,11 @@ export default function DashboardPage() {
     if (!s.createdAt) return;
     if (filterDist !== "ALL" && s.distributor_id !== filterDist) return;
     if (filterSO !== "ALL" && s.SO_email !== filterSO) return;
-    
-    const created = s.createdAt.toMillis ? new Date(s.createdAt.toMillis()) : new Date(s.createdAt);
-    if (created.toISOString().slice(0, 7) === currentMonth) {
+
+    const createdDay = dateKeyInTimeZone(s.createdAt);
+    if (createdDay && createdDay.slice(0, 7) === currentMonth) {
       mtdNewStores++;
-      if (created.toISOString().split('T')[0] === filterDate) ftdNewStores++;
+      if (createdDay === filterDate) ftdNewStores++;
     }
   });
 
@@ -163,11 +188,13 @@ export default function DashboardPage() {
           <h3 className="text-sm font-bold text-gray-800 mb-3">Dashboard filters</h3>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <div>
-              <label className="text-[10px] font-bold text-gray-500 mb-1 block">SALES PERSON</label>
-              <select className="w-full p-2 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium" value={filterSO} onChange={(e) => setFilterSO(e.target.value)}>
-                <option value="ALL">Whole team</option>
-                {soList.map(so => <option key={so.email} value={so.email}>{so.name || so.email.split('@')[0]}</option>)}
-              </select>
+              {isAdmin ? <>
+                <label className="text-[10px] font-bold text-gray-500 mb-1 block">SALES PERSON</label>
+                <select className="w-full p-2 border border-gray-200 rounded-xl bg-gray-50 text-sm font-medium" value={filterSO} onChange={(e) => setFilterSO(e.target.value)}>
+                  <option value="ALL">Whole team</option>
+                  {soList.map(so => <option key={so.email} value={so.email}>{so.name || so.email.split('@')[0]}</option>)}
+                </select>
+              </> : <div className="rounded-xl bg-gray-50 p-2 text-sm font-semibold text-gray-700">Sales Person: {user.email}</div>}
             </div>
             <div>
               <label className="text-[10px] font-bold text-gray-500 mb-1 block">DISTRIBUTOR</label>

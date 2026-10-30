@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { db, auth } from "../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { loadAppUser } from "../lib/access";
+import { isClaimEligibleOrder } from "../lib/claim-eligibility.mjs";
 import BottomNav from "../components/BottomNav";
 
 export default function ClaimPage() {
@@ -10,45 +13,71 @@ export default function ClaimPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchClaims = async () => {
-      if (!auth.currentUser) return;
+    let cancelled = false;
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user?.email) {
+        if (!cancelled) {
+          setClaims([]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (!cancelled) setLoading(true);
       try {
-        const isAdmin = auth.currentUser.email === "anand@perforacare.com";
-        
-        const q = isAdmin 
-          ? query(collection(db, "orders")) 
-          : query(collection(db, "orders"), where("SO_email", "==", auth.currentUser.email));
-        
+        const profile = await loadAppUser(user, db);
+        const email = profile.email;
+        const isAdmin = profile.role === "Admin";
+        const q = isAdmin
+          ? query(collection(db, "orders"))
+          : query(collection(db, "orders"), where("SO_email", "==", email));
+
         const snap = await getDocs(q);
-        
-        let allClaims = [];
-        snap.docs.forEach(doc => {
-          const order = doc.data();
-          order.items.forEach(item => {
-            if (item.extraScheme > 0) {
-              allClaims.push({
-                orderId: doc.id,
-                store: order.store_id,
-                sku: item.sku,
-                skuName: item.skuName,
-                qty: item.qty,
-                scheme: item.extraScheme,
-                claimValue: item.claim,
-                date: order.createdAt ? new Date(order.createdAt.toMillis()).toLocaleDateString() : 'Today'
-              });
-            }
+        const allClaims = [];
+
+        snap.docs.forEach((orderDoc) => {
+          const order = orderDoc.data();
+
+          // Match Apps Script claim visibility: only Accepted, Invoiced or Dispatched
+          // orders contribute claims. Draft, Created, Shared and Cancelled orders do not.
+          if (!isClaimEligibleOrder(order)) return;
+
+          order.items.forEach((item) => {
+            if (Number(item?.extraScheme) <= 0 || !Number.isFinite(Number(item?.claim))) return;
+
+            const createdAtMs = typeof order.createdAt?.toMillis === "function"
+              ? order.createdAt.toMillis()
+              : 0;
+
+            allClaims.push({
+              orderId: orderDoc.id,
+              store: order.storeName || order.store_id || "Unknown store",
+              sku: item.sku || "",
+              skuName: item.skuName || item.sku || "",
+              qty: Number(item.qty) || 0,
+              scheme: Number(item.extraScheme) || 0,
+              claimValue: Number(item.claim) || 0,
+              date: createdAtMs ? new Date(createdAtMs).toLocaleDateString() : "",
+              sortTime: createdAtMs,
+            });
           });
         });
-        
-        // Sort by newest first
-        allClaims.sort((a, b) => new Date(b.date) - new Date(a.date));
-        setClaims(allClaims);
+
+        allClaims.sort((a, b) => b.sortTime - a.sortTime);
+        if (!cancelled) setClaims(allClaims);
       } catch (error) {
-        console.error(error);
+        console.error("Could not load claims:", error);
+        if (!cancelled) setClaims([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
     };
-    fetchClaims();
   }, []);
 
   const totalClaim = claims.reduce((acc, curr) => acc + Number(curr.claimValue), 0);

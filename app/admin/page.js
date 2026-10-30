@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { db, auth } from "../lib/firebase";
 import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { loadAppUser } from "../lib/access";
+import { isClaimEligibleOrder } from "../lib/claim-eligibility.mjs";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 import Papa from "papaparse";
@@ -11,6 +14,7 @@ export default function AdminPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+  const [adminName, setAdminName] = useState("Admin");
   const [searchTerm, setSearchTerm] = useState("");
   const [distFilter, setDistFilter] = useState("ALL");
   const [soFilter, setSoFilter] = useState("ALL");
@@ -36,10 +40,8 @@ export default function AdminPage() {
 
   const hr = new Date().getHours();
   const greeting = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
-  const adminName = auth.currentUser?.displayName || "Admin";
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const skuSnap = await getDocs(collection(db, "sku_master"));
       setSkus(skuSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => a.sku.localeCompare(b.sku)));
@@ -58,14 +60,16 @@ export default function AdminPage() {
       let allClaims = [];
       orderSnap.docs.forEach(d => {
         const order = d.data();
-        const invNo = d.id.slice(-6).toUpperCase();
+        if (!isClaimEligibleOrder(order)) return;
+        const invNo = order.invoiceNo || d.id.slice(-6).toUpperCase();
         const soEmail = order.SO_email || "";
         const dName = dList.find(x => x.id === order.distributor_id)?.name || order.distributor_id;
+        const createdAtMs = typeof order.createdAt?.toMillis === "function" ? order.createdAt.toMillis() : 0;
 
         order.items.forEach(i => {
-          if (i.extraScheme > 0) {
-            allClaims.push({ 
-              invoiceNo: invNo, orderId: d.id, date: new Date(order.createdAt.toMillis()).toLocaleDateString(),
+          if (Number(i?.extraScheme) > 0 && Number.isFinite(Number(i?.claim))) {
+            allClaims.push({
+              invoiceNo: invNo, orderId: d.id, date: createdAtMs ? new Date(createdAtMs).toLocaleDateString() : "",
               store: order.storeName || order.store_id, distId: order.distributor_id, distName: dName, soEmail: soEmail,
               sku: i.sku, skuName: i.skuName, category: i.category || "General", gst: i.gst || 0,
               mrp: i.mrp, qty: i.qty, scheme: i.extraScheme, claimAmount: Number(i.claim)
@@ -79,12 +83,21 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    const currentEmail = auth.currentUser?.email;
-    if (currentEmail !== "anand@perforacare.com" && currentEmail !== "anandsuradkar9@gmail.com") {
-      router.push("/dashboard");
-      return;
-    }
-    fetchData();
+    let cancelled = false;
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) { router.push("/admin-login"); return; }
+      setLoading(true);
+      try {
+        const profile = await loadAppUser(currentUser, db);
+        if (profile.role !== "Admin") { router.push("/dashboard"); return; }
+        if (!cancelled) setAdminName(profile.name || currentUser.displayName || "Admin");
+        await fetchData();
+      } catch (error) {
+        console.error("Admin access check failed:", error);
+        if (!cancelled) router.push("/admin-login");
+      }
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, [router]);
 
   const saveStore = async (e) => {

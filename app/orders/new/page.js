@@ -3,6 +3,8 @@
 import { useState, useEffect, Suspense } from "react";
 import { db, auth } from "../../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { loadAppUser, getAccessibleDistributors } from "../../lib/access";
 import { useRouter, useSearchParams } from "next/navigation";
 import BottomNav from "../../components/BottomNav";
 
@@ -23,48 +25,76 @@ function OrderTakingForm() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState([]);
 
-  useEffect(() => {
-    const savedCart = JSON.parse(localStorage.getItem("perfora_cart") || "[]");
-    setCart(savedCart);
-    
+    useEffect(() => {
+    let savedCart = [];
+
+    try {
+      const saved = localStorage.getItem("perfora_cart");
+      savedCart = saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error("Could not restore saved cart:", error);
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore cart from browser storage after mount.
+    setCart(Array.isArray(savedCart) ? savedCart : []);
+
     const urlStoreId = searchParams.get("storeId");
     const urlDistId = searchParams.get("distId");
+
     if (urlStoreId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Apply store from URL parameters.
       setSelectedStore(urlStoreId);
+
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Close suggestions for the selected store.
       setShowStoreList(false);
     }
-    if (urlDistId) setSelectedDist(urlDistId);
+
+    if (urlDistId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Apply distributor from URL parameters.
+      setSelectedDist(urlDistId);
+    }
   }, [searchParams]);
-
   useEffect(() => {
-    const fetchData = async () => {
-      if (!auth.currentUser) return;
-      const isAdmin = auth.currentUser.email === "anand@perforacare.com";
+    let cancelled = false;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser?.email) return;
+      try {
+        const profile = await loadAppUser(firebaseUser, db);
+        const isAdmin = profile.role === "Admin";
+        const distList = await getAccessibleDistributors(db, profile.email, isAdmin);
+        if (cancelled) return;
+        setDistributors(distList);
 
-      let distQuery = isAdmin ? query(collection(db, "distributors")) : query(collection(db, "distributors"), where("mapped_SO_emails", "array-contains", auth.currentUser.email));
-      const distSnap = await getDocs(distQuery);
-      setDistributors(distSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const storeQuery = isAdmin
+          ? query(collection(db, "stores"))
+          : query(collection(db, "stores"), where("SO_email", "==", profile.email));
+        const storeSnap = await getDocs(storeQuery);
+        if (!cancelled) setStores(storeSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      let storeQuery = isAdmin ? query(collection(db, "stores")) : query(collection(db, "stores"), where("SO_email", "==", auth.currentUser.email));
-      const storeSnap = await getDocs(storeQuery);
-      setStores(storeSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-      const skuSnap = await getDocs(collection(db, "sku_master"));
-      setSkus(skuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    };
-    fetchData();
+        const skuSnap = await getDocs(collection(db, "sku_master"));
+        if (!cancelled) setSkus(skuSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (error) {
+        console.error("Unable to load order-taking data:", error);
+      }
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, []);
 
-  useEffect(() => {
-    if (selectedStore && stores.length > 0) {
-      const storeObj = stores.find(s => s.id === selectedStore);
-      if (storeObj) {
-        setSelectedDist(storeObj.distributor_id);
-        setStoreSearch(storeObj.name);
-      }
-    }
-  }, [selectedStore, stores]);
+    useEffect(() => {
+    if (!selectedStore || stores.length === 0) return;
 
+    const storeObj = stores.find(
+      (store) => store.id === selectedStore
+    );
+
+    if (!storeObj) return;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Resolve distributor from the selected store.
+    setSelectedDist(storeObj.distributor_id);
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Populate search field for the selected store.
+    setStoreSearch(storeObj.name);
+  }, [selectedStore, stores]);
   const handleDistChange = (e) => {
     setSelectedDist(e.target.value);
     setSelectedStore("");

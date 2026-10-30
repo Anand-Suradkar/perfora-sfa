@@ -1,0 +1,208 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+
+    function userEmail() {
+      return request.auth.token.email;
+    }
+
+    function userPath(email) {
+      return /databases/$(database)/documents/users/$(email);
+    }
+
+    // Explicit owner bootstrap. Other administrators must already have an
+    // Admin role in users/{email}; clients cannot grant themselves that role.
+    function isAdmin() {
+      return signedIn() && (
+        userEmail() == 'anand@perforacare.com' ||
+        (exists(userPath(userEmail())) && get(userPath(userEmail())).data.role == 'Admin')
+      );
+    }
+
+    function isAuthorizedUser() {
+      return isAdmin() || (
+        signedIn() && exists(userPath(userEmail())) &&
+        get(userPath(userEmail())).data.role == 'SO'
+      );
+    }
+
+    function distributorPath(distributorId) {
+      return /databases/$(database)/documents/distributors/$(distributorId);
+    }
+
+    function distributorDocumentMappedToSelf() {
+      return signedIn() && (
+        (('mapped_SO_emails' in resource.data) &&
+          resource.data.mapped_SO_emails is list &&
+          resource.data.mapped_SO_emails.hasAny([userEmail()])) ||
+        (('mapped_SO_email' in resource.data) &&
+          resource.data.mapped_SO_email == userEmail())
+      );
+    }
+
+    function isMappedDistributor(distributorId) {
+      let p = distributorPath(distributorId);
+      return isAdmin() || (
+        signedIn() && exists(p) && (
+          (('mapped_SO_emails' in get(p).data) &&
+            get(p).data.mapped_SO_emails is list &&
+            get(p).data.mapped_SO_emails.hasAny([userEmail()])) ||
+          (('mapped_SO_email' in get(p).data) &&
+            get(p).data.mapped_SO_email == userEmail())
+        )
+      );
+    }
+function isDistributorMappedToSO(distributorId, soEmail) {
+  let p = distributorPath(distributorId);
+  return exists(p) && (
+    (
+      ('mapped_SO_emails' in get(p).data) &&
+      get(p).data.mapped_SO_emails is list &&
+      get(p).data.mapped_SO_emails.hasAny([soEmail])
+    ) ||
+    (
+      ('mapped_SO_email' in get(p).data) &&
+      get(p).data.mapped_SO_email == soEmail
+    )
+  );
+}
+
+function isValidAssignedSO(soEmail) {
+  return soEmail is string &&
+    exists(userPath(soEmail)) &&
+    get(userPath(soEmail)).data.role == 'SO';
+}
+    function storePath(storeId) {
+      return /databases/$(database)/documents/stores/$(storeId);
+    }
+
+    function canAccessStore(storeId) {
+      let p = storePath(storeId);
+      return isAdmin() || (
+        isAuthorizedUser() && exists(p) &&
+        get(p).data.SO_email == userEmail()
+      );
+    }
+
+    function orderStateTransitionAllowed(fromStatus, toStatus) {
+      return
+        (fromStatus == 'CREATED' && toStatus in ['SHARED', 'ACCEPTED', 'INVOICED', 'CANCELLED']) ||
+        (fromStatus == 'SHARED' && toStatus in ['SHARED', 'ACCEPTED', 'INVOICED', 'CANCELLED']) ||
+        (fromStatus == 'ACCEPTED' && toStatus in ['INVOICED', 'CANCELLED']) ||
+        (fromStatus == 'INVOICED' && toStatus == 'DISPATCHED');
+    }
+
+    match /users/{userId} {
+      allow get: if isAdmin() || (signedIn() && userId == userEmail());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() &&
+        request.resource.data.email == userId &&
+        request.resource.data.role in ['Admin', 'SO'];
+      // Avoid accidental deletion of the currently signed-in profile.
+      allow delete: if isAdmin() && userId != userEmail() && userId != 'anand@perforacare.com';
+    }
+
+    match /distributors/{distributorId} {
+      allow get, list: if isAdmin() || (isAuthorizedUser() && distributorDocumentMappedToSelf());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /stores/{storeId} {
+  allow get, list: if isAdmin() ||
+    (isAuthorizedUser() && resource.data.SO_email == userEmail());
+
+  // SO creates stores assigned to themselves.
+  allow create: if (
+    isAuthorizedUser() &&
+    !isAdmin() &&
+    request.resource.data.SO_email == userEmail() &&
+    request.resource.data.distributor_id is string &&
+    isMappedDistributor(request.resource.data.distributor_id)
+  ) || (
+    // Admin creates stores for a registered SO.
+    isAdmin() &&
+    isValidAssignedSO(request.resource.data.SO_email) &&
+    request.resource.data.distributor_id is string &&
+    isDistributorMappedToSO(
+      request.resource.data.distributor_id,
+      request.resource.data.SO_email
+    )
+  );
+
+  // Only Admin can update or delete store master records.
+  allow update: if isAdmin();
+  allow delete: if isAdmin();
+}
+
+    match /sku_master/{skuId} {
+      allow get, list: if isAuthorizedUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow get, list: if isAdmin() || (isAuthorizedUser() && resource.data.SO_email == userEmail());
+
+      allow create: if isAuthorizedUser() &&
+        request.resource.data.SO_email == userEmail() &&
+        request.resource.data.store_id is string &&
+        request.resource.data.distributor_id is string &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        request.resource.data.status in ['CREATED', 'DRAFT'] &&
+        canAccessStore(request.resource.data.store_id) &&
+        isMappedDistributor(request.resource.data.distributor_id);
+
+      // An SO can edit order contents only while editable, without changing
+      // ownership, the store/distributor, status, or original creation time.
+      // Admin operations remain available for controlled reconciliation.
+      allow update: if isAdmin() || (
+        isAuthorizedUser() && resource.data.SO_email == userEmail() && (
+          (
+            resource.data.status in ['CREATED', 'SHARED', 'ACCEPTED'] &&
+            request.resource.data.status == resource.data.status &&
+            request.resource.data.createdAt == resource.data.createdAt &&
+            request.resource.data.SO_email == resource.data.SO_email &&
+            request.resource.data.store_id == resource.data.store_id &&
+            request.resource.data.distributor_id == resource.data.distributor_id &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'grand_total', 'total_claim', 'updatedAt', 'storeName'])
+          ) || (
+            orderStateTransitionAllowed(resource.data.status, request.resource.data.status) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'invoiceNo', 'invoiceDate', 'cancelledAt', 'cancellationNote']) &&
+            (request.resource.data.status != 'INVOICED' ||
+              (request.resource.data.invoiceNo is string && request.resource.data.invoiceNo.size() > 0))
+          )
+        )
+      );
+
+      // Orders are cancelled by status, never physically deleted.
+      allow delete: if false;
+    }
+
+    match /visits/{visitId} {
+      allow get, list: if isAdmin() || (isAuthorizedUser() && resource.data.SO_email == userEmail());
+      allow create: if isAuthorizedUser() &&
+        request.resource.data.SO_email == userEmail() &&
+        request.resource.data.store_id is string &&
+        canAccessStore(request.resource.data.store_id) &&
+        request.resource.data.status == 'IN_PROGRESS';
+      allow update: if isAdmin() || (
+        isAuthorizedUser() && resource.data.SO_email == userEmail() &&
+        resource.data.status == 'IN_PROGRESS' &&
+        request.resource.data.status == 'COMPLETED' &&
+        request.resource.data.SO_email == resource.data.SO_email &&
+        request.resource.data.store_id == resource.data.store_id &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'checkOutTime', 'checkOutLat', 'checkOutLng', 'noOrderReason', 'updatedAt'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Unlisted collections remain inaccessible until explicitly modeled.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

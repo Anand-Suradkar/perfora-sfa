@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { db, auth } from "../lib/firebase";
-import { collection, getDocs, query, where, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
+import { loadAppUser, getAccessibleDistributors } from "../lib/access";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
 
@@ -15,58 +17,85 @@ export default function OrdersListPage() {
   const [filter, setFilter] = useState("All");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  const fetchOrders = async (email) => {
+  const fetchOrders = async (firebaseUser) => {
     try {
-      // 1. Fetch Distributors and Stores for name mapping
-      const distSnap = await getDocs(collection(db, "distributors"));
+      const profile = await loadAppUser(firebaseUser, db);
+      const isAdmin = profile.role === "Admin";
+
+      const distList = await getAccessibleDistributors(db, profile.email, isAdmin);
       const distMap = {};
-      distSnap.docs.forEach(d => { distMap[d.id] = d.data().name; });
+      distList.forEach(d => { distMap[d.id] = d.name; });
       setDistributors(distMap);
 
-      const storeSnap = await getDocs(collection(db, "stores"));
+      const storeQ = isAdmin
+        ? query(collection(db, "stores"))
+        : query(collection(db, "stores"), where("SO_email", "==", profile.email));
+      const storeSnap = await getDocs(storeQ);
       const storeMap = {};
       storeSnap.docs.forEach(d => { storeMap[d.id] = d.data().name; });
       setStores(storeMap);
 
-      // 2. Fetch Orders
-      const isAdmin = email === "anand@perforacare.com";
-      const q = isAdmin 
+      const orderQ = isAdmin
         ? query(collection(db, "orders"))
-        : query(collection(db, "orders"), where("SO_email", "==", email));
-        
-      const snap = await getDocs(q);
-      const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      fetched.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+        : query(collection(db, "orders"), where("SO_email", "==", profile.email));
+      const snap = await getDocs(orderQ);
+      const fetched = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      fetched.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
       setOrders(fetched);
     } catch (error) {
-      console.error(error);
+      console.error("Unable to load orders:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) fetchOrders(user.email);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) fetchOrders(firebaseUser);
+      else setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
   const handleUpdateStatus = async (id, newStatus) => {
     try {
-      await updateDoc(doc(db, "orders", id), { status: newStatus });
-      setOrders(orders.map(o => o.id === id ? { ...o, status: newStatus } : o));
+      const order = orders.find(o => o.id === id);
+      if (!order) throw new Error("Order not found.");
+      let invoiceNo = "";
+      if (newStatus === "INVOICED") {
+        invoiceNo = window.prompt("Enter the distributor invoice number:")?.trim() || "";
+        if (!invoiceNo) return;
+      }
+      const patch = { status: newStatus, updatedAt: serverTimestamp() };
+      if (invoiceNo) {
+        patch.invoiceNo = invoiceNo;
+        patch.invoiceDate = serverTimestamp();
+      }
+      await updateDoc(doc(db, "orders", id), patch);
+      setOrders(orders.map(o => o.id === id ? { ...o, ...patch, ...(invoiceNo ? { invoiceNo } : {}) } : o));
     } catch (error) {
-      alert("Error updating status");
+      alert(error?.message || "Error updating status");
     }
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("Are you sure you want to delete this order?")) return;
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+    if (!["CREATED", "SHARED", "ACCEPTED"].includes(String(order.status || "").toUpperCase())) {
+      alert("Only Created, Shared or Accepted orders can be cancelled.");
+      return;
+    }
+    if (!confirm("Cancel this order? It will be retained in the audit trail.")) return;
     try {
-      await deleteDoc(doc(db, "orders", id));
-      setOrders(orders.filter(o => o.id !== id));
+      await updateDoc(doc(db, "orders", id), {
+        status: "CANCELLED",
+        cancellationNote: "Cancelled from order list",
+        cancelledAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setOrders(orders.map(o => o.id === id ? { ...o, status: "CANCELLED" } : o));
     } catch (error) {
-      alert("Error deleting order");
+      alert(error?.message || "Error cancelling order");
     }
   };
 
@@ -93,7 +122,7 @@ export default function OrdersListPage() {
     return `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
 
-  const statuses = ["All", "CREATED", "SHARED", "ACCEPTED", "INVOICED"];
+  const statuses = ["All", "CREATED", "SHARED", "ACCEPTED", "INVOICED", "DISPATCHED", "CANCELLED", "DRAFT"];
   const filteredOrders = orders.filter(o => filter === "All" || o.status === filter);
 
   return (
@@ -168,7 +197,7 @@ export default function OrdersListPage() {
                 <button onClick={() => handleUpdateStatus(order.id, 'INVOICED')} className="px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-100 border border-gray-200 rounded-lg shadow-sm">Invoice no.</button>
               )}
               
-              <button onClick={() => handleDelete(order.id)} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 rounded-lg border border-red-100 ml-auto">Delete</button>
+              {["CREATED", "SHARED", "ACCEPTED"].includes(String(order.status || "").toUpperCase()) && <button onClick={() => handleDelete(order.id)} className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 rounded-lg border border-red-100 ml-auto">Cancel</button>}
             </div>
           </div>
         )})}
